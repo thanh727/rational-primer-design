@@ -15,16 +15,16 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: main
-          token: ${{ secrets.TRAFFIC_TOKEN }}  # <--- CRITICAL ADDITION
+          token: ${{ secrets.TRAFFIC_TOKEN }}
 
-      - name: Get Traffic Data
-        uses: sangonzal/repository-traffic-action@v1
+      - name: Run Traffic Collector
+        # We are switching to this working tool:
+        uses: khammami/gh-traffic-action@v1.1
         with:
-          my_token: ${{ secrets.TRAFFIC_TOKEN }}
-          traffic_branch: main
+          token: ${{ secrets.TRAFFIC_TOKEN }}
           
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "📈 Update traffic data"
-          file_pattern: "traffic/*"
+          file_pattern: "traffic/**"
