@@ -1,9 +1,8 @@
 name: Log Traffic Data
 on:
   schedule:
-    - cron: "0 * * * *" # <--- Runs Every Hour (Recommended)
-    # Use "*/5 * * * *" if you really want every 5 minutes.
-  workflow_dispatch: # Allows manual run
+    - cron: "0 * * * *" # Runs every hour
+  workflow_dispatch:
 
 jobs:
   traffic-logger:
@@ -18,11 +17,11 @@ jobs:
           ref: main
           token: ${{ secrets.TRAFFIC_TOKEN }}
 
-      - name: Install Dependencies
+      - name: Install Python Dependencies
         run: |
           pip install requests pandas
 
-      - name: Update Traffic & README
+      - name: Fetch Data and Generate Badge
         env:
           TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
           REPO: ${{ github.repository }}
@@ -32,7 +31,6 @@ jobs:
           import requests
           import csv
           import pandas as pd
-          import re
 
           # --- CONFIG ---
           token = os.environ['TRAFFIC_TOKEN']
@@ -43,41 +41,33 @@ jobs:
           if not os.path.exists('traffic'):
               os.makedirs('traffic')
 
-          # --- SMART UPDATE FUNCTION (Handles Live Updates) ---
+          # --- HELPER: UPDATE CSV ---
           def update_csv(filename, api_data, headers_row):
               file_path = f'traffic/{filename}'
-              data_map = {} # Stores { 'YYYY-MM-DD': [count, unique] }
-
-              # 1. Load existing data
+              data_map = {} 
+              
               if os.path.exists(file_path):
                   with open(file_path, 'r') as f:
                       reader = csv.reader(f)
-                      next(reader, None) # Skip header
+                      next(reader, None)
                       for row in reader:
-                          if row:
-                              data_map[row[0]] = [int(row[1]), int(row[2])]
+                          if row: data_map[row[0]] = [int(row[1]), int(row[2])]
 
-              # 2. Update with new data (Overwrites today's entry if changed)
               for entry in api_data:
                   date = entry['timestamp'][:10]
-                  count = entry['count']
-                  uniques = entry['uniques']
-                  data_map[date] = [count, uniques]
+                  data_map[date] = [entry['count'], entry['uniques']]
 
-              # 3. Write back to CSV (Sorted by Date)
               with open(file_path, 'w', newline='') as f:
                   writer = csv.writer(f)
                   writer.writerow(headers_row)
                   for date in sorted(data_map.keys()):
                       writer.writerow([date, data_map[date][0], data_map[date][1]])
 
-          # --- FETCH NEW DATA ---
-          print('Fetching Views...')
+          # --- FETCH DATA ---
           r_views = requests.get(f'{base_url}/views?per=day', headers=headers)
           if r_views.status_code == 200:
               update_csv('views.csv', r_views.json()['views'], ['Date', 'count', 'uniques'])
           
-          print('Fetching Clones...')
           r_clones = requests.get(f'{base_url}/clones?per=day', headers=headers)
           if r_clones.status_code == 200:
               update_csv('clones.csv', r_clones.json()['clones'], ['Date', 'count', 'uniques'])
@@ -85,41 +75,36 @@ jobs:
           # --- CALCULATE TOTALS ---
           total_views = 0
           total_clones = 0
-
           if os.path.exists('traffic/views.csv'):
-              df = pd.read_csv('traffic/views.csv')
-              total_views = df['count'].sum()
-
+              total_views = pd.read_csv('traffic/views.csv')['count'].sum()
           if os.path.exists('traffic/clones.csv'):
-              df = pd.read_csv('traffic/clones.csv')
-              total_clones = df['count'].sum()
+              total_clones = pd.read_csv('traffic/clones.csv')['count'].sum()
+
+          # --- GENERATE SVG BADGE (NO TEXT FILE EDITING) ---
+          # This creates a vector image that looks like a badge
+          svg_content = f'''<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"250\" height=\"20\">
+            <linearGradient id=\"b\" x2=\"0\" y2=\"100%\"><stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/><stop offset=\"1\" stop-opacity=\".1\"/></linearGradient>
+            <mask id=\"a\"><rect width=\"250\" height=\"20\" rx=\"3\" fill=\"#fff\"/></mask>
+            <g mask=\"url(#a)\">
+              <path fill=\"#555\" d=\"M0 0h90v20H0z\"/>
+              <path fill=\"#4c1\" d=\"M90 0h160v20H90z\"/>
+              <path fill=\"url(#b)\" d=\"M0 0h250v20H0z\"/>
+            </g>
+            <g fill=\"#fff\" text-anchor=\"middle\" font-family=\"DejaVu Sans,Verdana,Geneva,sans-serif\" font-size=\"11\">
+              <text x=\"45\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">Statistics</text>
+              <text x=\"45\" y=\"14\">Statistics</text>
+              <text x=\"165\" y=\"15\" fill=\"#010101\" fill-opacity=\".3\">Views: {total_views} | Clones: {total_clones}</text>
+              <text x=\"165\" y=\"14\">Views: {total_views} | Clones: {total_clones}</text>
+            </g>
+          </svg>'''
           
-          print(f'Totals: Views={total_views}, Clones={total_clones}')
-
-          # --- UPDATE README ---
-          readme_path = 'README.md'
-          with open(readme_path, 'r', encoding='utf-8') as f:
-              content = f.read()
-
-          # Regex to replace content between markers
-          content = re.sub(
-              r'.*?', 
-              f'{total_views}', 
-              content
-          )
-          
-          content = re.sub(
-              r'.*?', 
-              f'{total_clones}', 
-              content
-          )
-
-          with open(readme_path, 'w', encoding='utf-8') as f:
-              f.write(content)
+          with open('traffic/traffic_badge.svg', 'w') as f:
+              f.write(svg_content)
+          print(f'Generated Badge: Views {total_views}, Clones {total_clones}')
           "
 
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "📈 Update traffic stats"
-          file_pattern: "traffic/* README.md"
+          commit_message: "📈 Update traffic badge"
+          file_pattern: "traffic/*"
