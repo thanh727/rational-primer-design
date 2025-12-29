@@ -23,7 +23,7 @@ If you want to modify the code or install manually:
 
 ```bash
 # Clone the repository
-git clone [https://github.com/thanh727/rational-primer-design.git](https://github.com/thanh727/rational-primer-design.git)
+git clone [https://github.com/thanh727/rational-primer-design.git]
 cd rational-primer-design
 
 # Install dependencies
