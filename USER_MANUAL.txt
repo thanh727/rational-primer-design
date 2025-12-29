@@ -1,0 +1,74 @@
+==============================================================================
+🧬 RATIONAL PRIMER DESIGN PIPELINE - USER MANUAL
+==============================================================================
+
+Welcome! This tool automatically designs and validates TaqMan primers/probes 
+for diagnostic assays. It uses a "Rational Design" approach, mining conserved 
+sequences from your target genomes and validating them against background data.
+
+------------------------------------------------------------------------------
+⚙️ CONFIGURATION (config/parameters.json)
+------------------------------------------------------------------------------
+You can control the biology of the design by editing 'config/parameters.json'.
+Here are the most important settings:
+
+  1. Sampling Sizes:
+     - "design_target_sampling_size": Set to 0 to use ALL available genomes.
+       (Recommended for publication-quality accuracy).
+     - Set to small numbers (e.g., 10) for quick test runs.
+
+  2. Biological Specs:
+     - "product_size_min/max": The allowed length of the PCR amplicon.
+     - "min_sensitivity": Discard primers that don't detect at least this % 
+       of targets (Default: 95.0%).
+     - "design_min_conservation": Primers must match at least this % of 
+       target genomes perfectly (Default: 90.0%).
+
+  3. Reproducibility:
+     - The pipeline uses a fixed Random Seed (42) by default. This means if 
+       you run it twice on the same data, you get the EXACT same result.
+     - To use a random seed (for fresh results), run via command line:
+       rational-design pipeline ... --seed 123
+
+------------------------------------------------------------------------------
+🚀 HOW TO RUN
+------------------------------------------------------------------------------
+
+[WINDOWS]
+1. Double-click "RUN_PIPELINE.bat".
+2. Enter a Project Name (e.g., "Salmonella_Test").
+3. When asked for a config file, you can just press Enter to use the default.
+4. Select Mode [2] (Local Files) if you already have FASTA files.
+5. If asked, press Enter to use the default database folders.
+
+[MACOS / LINUX]
+1. Open Terminal.
+2. Run: ./RUN_PIPELINE.sh
+3. Follow the same prompts as above.
+
+------------------------------------------------------------------------------
+📊 OUTPUT FILES
+------------------------------------------------------------------------------
+Inside your new project folder (e.g., "MyTest"), you will find:
+
+1. FINAL_ASSAY.csv (🏆 The Main Result)
+   - Contains the best Primer/Probe sets found.
+   - Columns: Sequence, Tm, Sensitivity, Specificity, Gene Name.
+
+2. pipeline_log.txt
+   - A full history of the run, including how many candidates were tested.
+
+3. 3_validation/results_target.csv
+   - Detailed In-Silico PCR results for every genome tested.
+
+------------------------------------------------------------------------------
+❓ TROUBLESHOOTING
+------------------------------------------------------------------------------
+- "Python is not installed": Please install Python 3.9+ and ensure you check 
+  "Add to PATH" during installation.
+  
+- "No candidates found": The tool will automatically retry with relaxed settings
+  (Auto-Optimization). It cycles through 5 strategies, lowering conservation 
+  from 95% down to 80% if needed. You do not need to restart it manually.
+
+==============================================================================

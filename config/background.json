@@ -1,0 +1,14 @@
+{
+  "streptococcus_parasuis": [
+    "\"Streptococcus parasuis\"[Organism] AND \"complete genome\"[title]", 1.7
+  ],
+  "enterobacter_cloacae": [
+    "\"Enterobacter cloacae\"[title] AND \"complete genome\"[title]", 1.7
+  ],
+  "citrobacter_freundii": [
+    "\"Citrobacter freundii\"[Organism] AND \"complete genome\"[title]", 4.0
+  ],
+  "proteus_mirabilis": [
+    "\"Proteus mirabilis\"[title] AND \"complete genome\"[title]", 1.7
+  ]
+}

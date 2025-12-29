@@ -1,0 +1,31 @@
+# --- Python & System Junk ---
+__pycache__/
+*.py[cod]
+*$py.class
+.DS_Store
+Thumbs.db
+
+# --- Virtual Environments ---
+venv/
+env/
+.env
+
+# --- Data & Outputs (IMPORTANT) ---
+# We keep the folder structure, but ignore the big files inside
+database/target/*
+database/background/*
+!database/target/.gitkeep
+!database/background/.gitkeep
+0_raw_data/
+1_workspace/
+2_candidates/
+3_validation/
+
+# --- User Specific Configs ---
+# You might want to keep the default parameters.json, but ignore user copies
+run_parameters_cycle_*.json
+
+# --- Logs & Output Files ---
+pipeline_log.txt
+FINAL_ASSAY.csv
+*.log

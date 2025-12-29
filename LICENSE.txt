@@ -1,0 +1,22 @@
+ACADEMIC / NON-COMMERCIAL SOFTWARE LICENSE
+
+Copyright (c) 2025 Thanh Nguyen
+
+Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, and distribute copies of the Software, subject to the following conditions:
+
+1. ACADEMIC AND NON-PROFIT USE ONLY:
+   The Software may be used by academic institutions, non-profit organizations, and individuals for research, educational, and other non-commercial purposes only.
+
+2. NO COMMERCIAL USE:
+   Use of the Software for commercial purposes, including but not limited to:
+   - Developing commercial diagnostic assays or kits;
+   - Providing paid services using the Software;
+   - Integrating the Software into proprietary commercial products;
+   is strictly prohibited without a separate commercial license agreement with the Copyright Holder.
+
+3. ATTRIBUTION:
+   The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+
+For commercial licensing inquiries, please contact: nguyenthanh727@gmail.com

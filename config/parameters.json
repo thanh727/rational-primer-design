@@ -1,0 +1,22 @@
+{
+    "design_target_sampling_size": 0,
+    "design_background_sampling_size": 50,
+    "validation_target_sampling_size": 0,
+    "validation_background_sampling_size": 0,
+    "design_max_candidates": 50,
+    "cpu_cores": 0,
+    "primer_length": 20,
+    "primer_opt_tm": 60.0,
+    "primer_gc_min": 20.0,
+    "primer_gc_max": 80.0,
+    "probe_tm_plus": 10.0,
+    "product_size_min": 120,
+    "product_size_max": 400,
+    "design_min_conservation": 0.90,
+    "design_max_bg_prevalence": 0.10,
+    "min_sensitivity": 90.0,
+    "max_mismatch": 2,
+    "validation_max_cross_reactivity": 5.0,
+    "probe_max_mismatch": 2,
+    "enable_blast": false
+}

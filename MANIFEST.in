@@ -1,0 +1,5 @@
+include config/*.json
+include database/target/.gitkeep
+include database/background/.gitkeep
+include README.md
+include requirements.txt
