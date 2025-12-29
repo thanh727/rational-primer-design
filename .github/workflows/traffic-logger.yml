@@ -1,25 +1,27 @@
 name: Log Traffic Data
 on:
   schedule:
-    # Run at 00:00 UTC every Monday
-    - cron: "0 0 * * 1" 
-  workflow_dispatch: # Allows you to run it manually to test
+    - cron: "0 0 * * 1"
+  workflow_dispatch:
 
 jobs:
   traffic-logger:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: main
+          token: ${{ secrets.TRAFFIC_TOKEN }}  # <--- CRITICAL ADDITION
 
-      - name: Repository Traffic Action
+      - name: Get Traffic Data
         uses: sangonzal/repository-traffic-action@v1
         with:
           my_token: ${{ secrets.TRAFFIC_TOKEN }}
-          # This keeps the CSV file in a folder named "traffic_data"
-          traffic_branch: main 
+          traffic_branch: main
           
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
