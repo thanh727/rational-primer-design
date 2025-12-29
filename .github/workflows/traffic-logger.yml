@@ -1,30 +1,90 @@
 name: Log Traffic Data
 on:
   schedule:
-    - cron: "0 0 * * 1"
-  workflow_dispatch:
+    - cron: "0 0 * * 1" # Runs every Monday
+  workflow_dispatch: # Allows manual run
 
 jobs:
   traffic-logger:
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write # Important for pushing changes back
       
     steps:
+      # 1. Checkout the code using your Super Key (so we can push later)
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: main
           token: ${{ secrets.TRAFFIC_TOKEN }}
 
-      - name: Run Traffic Collector
-        # We are switching to this working tool:
-        uses: khammami/gh-traffic-action@v1.1
-        with:
-          token: ${{ secrets.TRAFFIC_TOKEN }}
+      # 2. Run the Custom Traffic Script (No external actions!)
+      - name: Fetch and Save Traffic Data
+        env:
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          python3 -c "
+          import os
+          import requests
+          import csv
+          from datetime import datetime
+
+          # Config
+          token = os.environ['TRAFFIC_TOKEN']
+          repo = os.environ['REPO']
+          headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github.v3+json'}
+          base_url = f'https://api.github.com/repos/{repo}/traffic'
           
+          # Ensure directory exists
+          if not os.path.exists('traffic'):
+              os.makedirs('traffic')
+
+          def update_csv(filename, data, headers_row):
+              file_path = f'traffic/{filename}'
+              existing_dates = set()
+              
+              # Read existing to avoid duplicates
+              if os.path.exists(file_path):
+                  with open(file_path, 'r') as f:
+                      reader = csv.reader(f)
+                      next(reader, None) # Skip header
+                      for row in reader:
+                          if row: existing_dates.add(row[0]) # Date is first column
+
+              # Write new data
+              mode = 'a' if os.path.exists(file_path) else 'w'
+              with open(file_path, mode, newline='') as f:
+                  writer = csv.writer(f)
+                  if mode == 'w':
+                      writer.writerow(headers_row)
+                  
+                  for entry in data:
+                      date = entry['timestamp'][:10] # YYYY-MM-DD
+                      if date not in existing_dates:
+                          writer.writerow([date, entry['count'], entry['uniques']])
+                          print(f'Added {date} to {filename}')
+
+          # 1. Get Views
+          print('Fetching Views...')
+          r_views = requests.get(f'{base_url}/views?per=day', headers=headers)
+          if r_views.status_code == 200:
+              update_csv('views.csv', r_views.json()['views'], ['Date', 'Total Views', 'Unique Visitors'])
+          else:
+              print(f'Error fetching views: {r_views.text}')
+
+          # 2. Get Clones
+          print('Fetching Clones...')
+          r_clones = requests.get(f'{base_url}/clones?per=day', headers=headers)
+          if r_clones.status_code == 200:
+              update_csv('clones.csv', r_clones.json()['clones'], ['Date', 'Total Clones', 'Unique Cloners'])
+          else:
+              print(f'Error fetching clones: {r_clones.text}')
+          "
+
+      # 3. Save the Data (Commit & Push)
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
           commit_message: "📈 Update traffic data"
-          file_pattern: "traffic/**"
+          file_pattern: "traffic/*.csv"
