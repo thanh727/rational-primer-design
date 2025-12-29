@@ -1,52 +1,78 @@
-# Rational Primer Design Pipeline
+# Rational Primer Design Pipeline 🧬
+
+A high-performance, parallelized bioinformatics tool for designing and validating TaqMan PCR assays.
 
 ### 📊 Project Growth
 | Metric | Count |
 | :--- | :--- |
 | **Total Views** | 0|
 | **Total Clones/Downloads** | 0|
-## 🧬 About
-**Rational Primer Design** is a comprehensive pipeline for designing PCR primers. It automates the selection process to ensure high specificity and efficiency for your biological workflows.
 
-## 🚀 Installation
+---
 
-### Option 1: Quick Install (Windows)
-1. Download the latest release.
-2. Double-click **`INSTALL.bat`**.
+## 🚀 Features
+* **Automated Design:** Mines conserved regions from target genomes using a 2-Bit integer algorithm.
+* **In-Silico Validation:** Simulates PCR against hundreds of background genomes using "Turbo Pigeonhole" logic.
+* **Parallel Processing:** Uses all available CPU cores for maximum speed.
+* **Smart Optimization:** Automatically relaxes constraints if strict parameters fail to find candidates.
+* **Reproducible:** Uses deterministic sampling so results are identical between runs.
+* **Cross-Platform:** Runs natively on **Windows**, **macOS**, and **Linux**.
 
-### Option 2: Quick Install (Linux/Mac)
-1. Open your terminal.
-2. Run: `bash INSTALL.sh`
+---
 
-### Option 3: Developer Install (Python)
-If you want to modify the code or install manually:
+## 📦 Installation
 
+### 🪟 Windows
+1. Double-click **`INSTALL.bat`**.
+   *(This installs Python dependencies and registers the `rational-design` command).*
+
+### 🍎 macOS / 🐧 Linux
+1. Open your **Terminal**.
+2. Navigate to this folder:
+   ```bash
+   cd /path/to/rational_primer_design
+   ```
+3. Make the scripts executable (only needed once):
+   ```bash
+   chmod +x INSTALL.sh RUN_PIPELINE.sh
+   ```
+4. Run the installer:
+   ```bash
+   ./INSTALL.sh
+   ```
+
+## 🏃‍♂️ How to Run
+
+### 🪟 Windows
+Double-click **RUN_PIPELINE.bat**.
+
+Follow the on-screen prompts to select your Project Name and Data Mode.
+
+### 🍎 macOS / 🐧 Linux
+Open Terminal and run:
 ```bash
-# Clone the repository
-git clone [https://github.com/thanh727/rational-primer-design.git]
-cd rational-primer-design
+./RUN_PIPELINE.sh
+```
+Follow the on-screen prompts.
 
-# Install dependencies
-pip install -r requirements.txt
+## ⚙️ Configuration
+You can customize the biological parameters by editing: `config/parameters.json`
 
-# Install the package
-pip install .
+| Parameter | Default | Description |
+|---------|---------|-------------|
+| design_target_sampling_size | 0 | Number of genomes to use for design. 0 = Use ALL (Highest Accuracy). |
+| design_max_candidates | 10 | Number of primer pairs to attempt in the first cycle. |
+| min_sensitivity | 95.0 | Minimum % of target genomes the primer must detect. |
+| primer_length | 20 | Length of the primers (bp). |
+| product_size_min | 100 | Minimum amplicon length. |
+| enable_blast | true | Automatically annotate gene names via NCBI BLAST. |
 
-💻 Usage
-After installation, you can run the pipeline using the command line:
+## 📂 Folder Structure
+- `rational_design/`: Source code (Python).
+- `config/`: Configuration files.
+- `database/`: Place your FASTA files here (target and background subfolders).
+- `MyProject/`: Output folder (Generated after running).
 
-Bash
-
-# Example command
-python rational_design/main.py --input data/genes.fasta --output results/
-
-(Note: Please refer to USER_MANUAL.txt for detailed parameters and options.)
-
-📂 Project Structure
-rational_design/: Main source code.
-
-config/: Configuration files.
-
-database/: Reference data.
-
-traffic/: Traffic data logs (generated automatically).
+## 🛠 Requirements
+- Python 3.9+ (Must be installed and added to PATH).
+- Internet Connection (Optional, only for downloading genomes from NCBI/BLAST).
