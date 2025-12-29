@@ -1,8 +1,14 @@
 # Rational Primer Design Pipeline 🧬
 
 A high-performance, parallelized bioinformatics tool for designing and validating TaqMan PCR assays.
-[![Downloads](https://img.shields.io/github/downloads/thanh727/rational-primer-design/total.svg)](https://github.com/thanh727/rational-primer-design/releases)
 
+### 📊 Project Growth
+| Metric | Count |
+| :--- | :--- |
+| **Total Views** | 0|
+| **Total Clones/Downloads** | 0|
+
+---
 
 ## 🚀 Features
 * **Automated Design:** Mines conserved regions from target genomes using a 2-Bit integer algorithm.
