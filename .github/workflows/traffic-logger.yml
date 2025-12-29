@@ -17,7 +17,7 @@ jobs:
       - name: Repository Traffic Action
         uses: sangonzal/repository-traffic-action@v1
         with:
-          my_token: ${{ secrets.GITHUB_TOKEN }}
+          my_token: ${{ secrets.TRAFFIC_TOKEN }}
           # This keeps the CSV file in a folder named "traffic_data"
           traffic_branch: main 
           
