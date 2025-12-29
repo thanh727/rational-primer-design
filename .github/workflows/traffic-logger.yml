@@ -1,25 +1,28 @@
 name: Log Traffic Data
 on:
   schedule:
-    - cron: "0 0 * * 1" # Runs every Monday
+    - cron: "0 * * * *" # <--- Runs Every Hour (Recommended)
+    # Use "*/5 * * * *" if you really want every 5 minutes.
   workflow_dispatch: # Allows manual run
 
 jobs:
   traffic-logger:
     runs-on: ubuntu-latest
     permissions:
-      contents: write # Important for pushing changes back
+      contents: write
       
     steps:
-      # 1. Checkout the code using your Super Key (so we can push later)
       - name: Checkout code
         uses: actions/checkout@v3
         with:
           ref: main
           token: ${{ secrets.TRAFFIC_TOKEN }}
 
-      # 2. Run the Custom Traffic Script (No external actions!)
-      - name: Fetch and Save Traffic Data
+      - name: Install Dependencies
+        run: |
+          pip install requests pandas
+
+      - name: Update Traffic & README
         env:
           TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
           REPO: ${{ github.repository }}
@@ -28,63 +31,95 @@ jobs:
           import os
           import requests
           import csv
-          from datetime import datetime
+          import pandas as pd
+          import re
 
-          # Config
+          # --- CONFIG ---
           token = os.environ['TRAFFIC_TOKEN']
           repo = os.environ['REPO']
           headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github.v3+json'}
           base_url = f'https://api.github.com/repos/{repo}/traffic'
           
-          # Ensure directory exists
           if not os.path.exists('traffic'):
               os.makedirs('traffic')
 
-          def update_csv(filename, data, headers_row):
+          # --- SMART UPDATE FUNCTION (Handles Live Updates) ---
+          def update_csv(filename, api_data, headers_row):
               file_path = f'traffic/{filename}'
-              existing_dates = set()
-              
-              # Read existing to avoid duplicates
+              data_map = {} # Stores { 'YYYY-MM-DD': [count, unique] }
+
+              # 1. Load existing data
               if os.path.exists(file_path):
                   with open(file_path, 'r') as f:
                       reader = csv.reader(f)
                       next(reader, None) # Skip header
                       for row in reader:
-                          if row: existing_dates.add(row[0]) # Date is first column
+                          if row:
+                              data_map[row[0]] = [int(row[1]), int(row[2])]
 
-              # Write new data
-              mode = 'a' if os.path.exists(file_path) else 'w'
-              with open(file_path, mode, newline='') as f:
+              # 2. Update with new data (Overwrites today's entry if changed)
+              for entry in api_data:
+                  date = entry['timestamp'][:10]
+                  count = entry['count']
+                  uniques = entry['uniques']
+                  data_map[date] = [count, uniques]
+
+              # 3. Write back to CSV (Sorted by Date)
+              with open(file_path, 'w', newline='') as f:
                   writer = csv.writer(f)
-                  if mode == 'w':
-                      writer.writerow(headers_row)
-                  
-                  for entry in data:
-                      date = entry['timestamp'][:10] # YYYY-MM-DD
-                      if date not in existing_dates:
-                          writer.writerow([date, entry['count'], entry['uniques']])
-                          print(f'Added {date} to {filename}')
+                  writer.writerow(headers_row)
+                  for date in sorted(data_map.keys()):
+                      writer.writerow([date, data_map[date][0], data_map[date][1]])
 
-          # 1. Get Views
+          # --- FETCH NEW DATA ---
           print('Fetching Views...')
           r_views = requests.get(f'{base_url}/views?per=day', headers=headers)
           if r_views.status_code == 200:
-              update_csv('views.csv', r_views.json()['views'], ['Date', 'Total Views', 'Unique Visitors'])
-          else:
-              print(f'Error fetching views: {r_views.text}')
-
-          # 2. Get Clones
+              update_csv('views.csv', r_views.json()['views'], ['Date', 'count', 'uniques'])
+          
           print('Fetching Clones...')
           r_clones = requests.get(f'{base_url}/clones?per=day', headers=headers)
           if r_clones.status_code == 200:
-              update_csv('clones.csv', r_clones.json()['clones'], ['Date', 'Total Clones', 'Unique Cloners'])
-          else:
-              print(f'Error fetching clones: {r_clones.text}')
+              update_csv('clones.csv', r_clones.json()['clones'], ['Date', 'count', 'uniques'])
+
+          # --- CALCULATE TOTALS ---
+          total_views = 0
+          total_clones = 0
+
+          if os.path.exists('traffic/views.csv'):
+              df = pd.read_csv('traffic/views.csv')
+              total_views = df['count'].sum()
+
+          if os.path.exists('traffic/clones.csv'):
+              df = pd.read_csv('traffic/clones.csv')
+              total_clones = df['count'].sum()
+          
+          print(f'Totals: Views={total_views}, Clones={total_clones}')
+
+          # --- UPDATE README ---
+          readme_path = 'README.md'
+          with open(readme_path, 'r', encoding='utf-8') as f:
+              content = f.read()
+
+          # Regex to replace content between markers
+          content = re.sub(
+              r'.*?', 
+              f'{total_views}', 
+              content
+          )
+          
+          content = re.sub(
+              r'.*?', 
+              f'{total_clones}', 
+              content
+          )
+
+          with open(readme_path, 'w', encoding='utf-8') as f:
+              f.write(content)
           "
 
-      # 3. Save the Data (Commit & Push)
       - name: Commit changes
         uses: stefanzweifel/git-auto-commit-action@v4
         with:
-          commit_message: "📈 Update traffic data"
-          file_pattern: "traffic/*.csv"
+          commit_message: "📈 Update traffic stats"
+          file_pattern: "traffic/* README.md"
