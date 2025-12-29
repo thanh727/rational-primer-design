@@ -1,42 +1,32 @@
 @echo off
-title Rational Primer Design Pipeline
-:: Force UTF-8 Encoding for Emojis
+setlocal EnableDelayedExpansion
 chcp 65001 >nul
-color 0A
+
 cls
-
 echo ========================================================
-echo      🧬 RATIONAL PRIMER DESIGN PIPELINE 🧬
+echo    RATIONAL PRIMER DESIGN PIPELINE (Windows)
 echo ========================================================
 echo.
 
-:: --- STEP 1: PROJECT NAME ---
+:: --- PROJECT NAME ---
 set /p proj_name="> Enter Project Name (e.g. MyTest): "
-echo.
 
-:: --- STEP 2: CONFIGURATION ---
+:: --- CONFIGURATION ---
+echo.
 echo  [CONFIGURATION]
-echo  -------------------------------------------------------
-echo  Default config: config\parameters.json
-echo  (Press Enter to use default, or drag a new JSON here)
-echo  -------------------------------------------------------
-set /p param_file="> Drag Parameter JSON here: "
+echo  Default: config/parameters.json
+set /p param_file="> Drag Parameter JSON here (or press Enter): "
 
-:: Clean quotes and set default
-if defined param_file set param_file=%param_file:"=%
-if not defined param_file set param_file=config\parameters.json
+:: Clean quotes
+if not defined param_file set param_file=config/parameters.json
+set param_file=!param_file:"=!
+if "%param_file%"=="" set param_file=config/parameters.json
 
+:: --- MODE SELECTION ---
 echo.
-echo  [INFO] Using Configuration: %param_file%
+echo  [1] Download from NCBI
+echo  [2] Local Files
 echo.
-
-echo ========================================================
-echo  Please select your operation mode:
-echo.
-echo    [1] FULL AUTOMATION (Download from NCBI)
-echo    [2] LOCAL MODE (Use my own FASTA files)
-echo.
-echo ========================================================
 set /p mode="Enter choice (1 or 2): "
 
 if "%mode%"=="1" goto ONLINE
@@ -45,60 +35,33 @@ goto END
 
 :ONLINE
 echo.
-echo  [MODE: DOWNLOAD FROM NCBI]
-echo  -------------------------------------------------------
-echo  Tip: Drag and drop your JSON config files here.
-echo  -------------------------------------------------------
-echo.
-set /p t_conf="> Drag & Drop your TARGET JSON file here: "
-echo.
-set /p b_conf="> Drag & Drop your BACKGROUND JSON file here: "
-echo.
+echo  [MODE: NCBI DOWNLOAD]
+set /p t_conf="> Drag TARGET JSON: "
+set /p b_conf="> Drag BACKGROUND JSON: "
+set t_conf=!t_conf:"=!
+set b_conf=!b_conf:"=!
 
-set t_conf=%t_conf:"=%
-set b_conf=%b_conf:"=%
-
-echo  🚀 Starting Pipeline...
-rational-design pipeline --target_config "%t_conf%" --bg_config "%b_conf%" --email "nguyenthanh727@gmail.com" --out "%proj_name%" --params "%param_file%"
-goto DONE
+rational-design pipeline --target_config "!t_conf!" --bg_config "!b_conf!" --out "!proj_name!" --params "!param_file!"
+goto END
 
 :LOCAL
 echo.
 echo  [MODE: LOCAL FILES]
-echo  -------------------------------------------------------
-echo  Default Target:     database\target
-echo  Default Background: database\background
-echo.
-echo  (Press Enter to use defaults, or drag a specific folder)
-echo  -------------------------------------------------------
-echo.
-
-:: TARGET FOLDER
+echo  Default Target: database\target
 set /p t_path="> Path to TARGET folder: "
-if defined t_path set t_path=%t_path:"=%
-if not defined t_path set t_path=database\target
-
-:: BACKGROUND FOLDER
 set /p b_path="> Path to BACKGROUND folder: "
-if defined b_path set b_path=%b_path:"=%
+
+if not defined t_path set t_path=database\target
+set t_path=!t_path:"=!
+if "%t_path%"=="" set t_path=database\target
+
 if not defined b_path set b_path=database\background
+set b_path=!b_path:"=!
+if "%b_path%"=="" set b_path=database\background
 
-echo.
-echo  [INFO] Target Source:     %t_path%
-echo  [INFO] Background Source: %b_path%
-echo.
-
-echo  🚀 Starting Pipeline using local data...
-rational-design pipeline --local_target "%t_path%" --local_bg "%b_path%" --out "%proj_name%" --params "%param_file%"
-
-:DONE
-echo.
-echo ========================================================
-echo  ✅ DONE! Check the folder '%proj_name%' for 'FINAL_ASSAY.csv'.
-echo ========================================================
-pause
-exit
+rational-design pipeline --local_target "!t_path!" --local_bg "!b_path!" --out "!proj_name!" --params "!param_file!"
 
 :END
-echo Invalid choice. Exiting.
+echo.
+echo  DONE. Check output folder.
 pause
