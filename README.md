@@ -20,7 +20,12 @@ A high-performance, parallelized bioinformatics tool for designing and validatin
 ## 📦 Installation
 
 ### 🪟 Windows
-1. Double-click **`INSTALL.bat`**.
+1. Open your **cmd**.
+2. Navigate to this folder:
+   ```bash
+   cd /path/to/rational_primer_design
+   pip install -e .
+   ```  
    *(This installs Python dependencies and registers the `rational-design` command).*
 
 ### 🍎 macOS / 🐧 Linux
@@ -28,3 +33,74 @@ A high-performance, parallelized bioinformatics tool for designing and validatin
 2. Navigate to this folder:
    ```bash
    cd /path/to/rational_primer_design
+   ```
+3. Make the scripts executable (only needed once):
+   ```bash
+   chmod +x INSTALL.sh RUN_PIPELINE.sh
+   ```
+4. Run the installer:
+   ```bash
+   ./INSTALL.sh
+   ```
+
+---
+
+## 🏃‍♂️ How to Run
+
+### 🪟 Windows
+Double-click **`RUN_PIPELINE.bat`**.
+
+Follow the on-screen prompts to select your Project Name and Data Mode.
+
+### 🍎 macOS / 🐧 Linux
+Open Terminal and run:
+```bash
+./RUN_PIPELINE.sh
+```
+Follow the on-screen prompts.
+
+---
+
+## ⚙️ Configuration
+You can customize the biological parameters by editing:
+
+```text
+config/parameters.json
+```
+
+| Parameter | Default | Description |
+|---------|---------|-------------|
+| design_target_sampling_size | 0 | Number of genomes to use for design. 0 = Use ALL (Highest Accuracy). |
+| design_max_candidates | 10 | Number of primer pairs to attempt in the first cycle. |
+| min_sensitivity | 90.0 | Minimum % of target genomes the primer must detect. |
+| primer_length | 20 | Length of the primers (bp). |
+| product_size_min | 100 | Minimum amplicon length. |
+| product_size_max | 400 | Maximum amplicon length. |
+| enable_blast | true | Automatically annotate gene names via NCBI BLAST. |
+
+---
+
+## 📂 Folder Structure
+
+```text
+rational_design/   # Source code (Python)
+config/            # Configuration files
+database/           # FASTA files (target/ and background/)
+MyProject/          # Output folder (generated after running)
+```
+
+---
+
+## 🛠 Requirements
+* Python **3.9+** (must be installed and added to PATH)
+* Internet connection *(optional; only required for NCBI genome download and BLAST annotation)*
+
+---
+
+## 🚀 Final Step
+1. **Commit** the new YAML.
+2. **Commit** the fixed README on the GitHub website.
+3. Run the workflow manually.
+
+**Why this will work forever:**  
+The robot now generates a new file `traffic/traffic_badge.svg`. It **never** opens, reads, or writes `README.md`. Your README is therefore isolated from automated modification and remains stable.
