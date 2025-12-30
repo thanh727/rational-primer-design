@@ -6,6 +6,8 @@ setup.py
 config/background.json
 config/parameters.json
 config/target.json
+database/background/.gitkeep
+database/target/.gitkeep
 rational_design/__init__.py
 rational_design/cli.py
 rational_design/constructor.py

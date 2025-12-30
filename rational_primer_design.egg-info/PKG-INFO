@@ -1,4 +1,4 @@
-Metadata-Version: 2.1
+Metadata-Version: 2.4
 Name: rational-primer-design
 Version: 1.0.0
 Summary: A high-throughput rational design pipeline for TaqMan assays in variable genomes.
@@ -12,10 +12,31 @@ Classifier: Topic :: Scientific/Engineering :: Bio-Informatics
 Requires-Python: >=3.9
 Description-Content-Type: text/markdown
 License-File: LICENSE.txt
+Requires-Dist: biopython>=1.79
+Requires-Dist: pandas>=1.3.0
+Requires-Dist: primer3-py>=0.6.1
+Requires-Dist: numpy>=1.20.0
+Requires-Dist: tqdm>=4.60.0
+Requires-Dist: python-Levenshtein>=0.12.2
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: license-file
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
 
 # Rational Primer Design Pipeline 🧬
 
 A high-performance, parallelized bioinformatics tool for designing and validating TaqMan PCR assays.
+
+### 📊 Project Growth
+![Traffic Stats](traffic/traffic_badge.svg)
+
+---
 
 ## 🚀 Features
 * **Automated Design:** Mines conserved regions from target genomes using a 2-Bit integer algorithm.
@@ -30,7 +51,12 @@ A high-performance, parallelized bioinformatics tool for designing and validatin
 ## 📦 Installation
 
 ### 🪟 Windows
-1. Double-click **`INSTALL.bat`**.
+1. Open your **cmd**.
+2. Navigate to this folder:
+   ```bash
+   cd /path/to/rational_primer_design
+   pip install -e .
+   ```  
    *(This installs Python dependencies and registers the `rational-design` command).*
 
 ### 🍎 macOS / 🐧 Linux
@@ -48,10 +74,12 @@ A high-performance, parallelized bioinformatics tool for designing and validatin
    ./INSTALL.sh
    ```
 
+---
+
 ## 🏃‍♂️ How to Run
 
 ### 🪟 Windows
-Double-click **RUN_PIPELINE.bat**.
+Double-click **`RUN_PIPELINE.bat`**.
 
 Follow the on-screen prompts to select your Project Name and Data Mode.
 
@@ -62,24 +90,48 @@ Open Terminal and run:
 ```
 Follow the on-screen prompts.
 
+---
+
 ## ⚙️ Configuration
-You can customize the biological parameters by editing: `config/parameters.json`
+You can customize the biological parameters by editing:
+
+```text
+config/parameters.json
+```
 
 | Parameter | Default | Description |
 |---------|---------|-------------|
 | design_target_sampling_size | 0 | Number of genomes to use for design. 0 = Use ALL (Highest Accuracy). |
 | design_max_candidates | 10 | Number of primer pairs to attempt in the first cycle. |
-| min_sensitivity | 95.0 | Minimum % of target genomes the primer must detect. |
+| min_sensitivity | 90.0 | Minimum % of target genomes the primer must detect. |
 | primer_length | 20 | Length of the primers (bp). |
 | product_size_min | 100 | Minimum amplicon length. |
+| product_size_max | 400 | Maximum amplicon length. |
 | enable_blast | true | Automatically annotate gene names via NCBI BLAST. |
 
+---
+
 ## 📂 Folder Structure
-- `rational_design/`: Source code (Python).
-- `config/`: Configuration files.
-- `database/`: Place your FASTA files here (target and background subfolders).
-- `MyProject/`: Output folder (Generated after running).
+
+```text
+rational_design/   # Source code (Python)
+config/            # Configuration files
+database/           # FASTA files (target/ and background/)
+MyProject/          # Output folder (generated after running)
+```
+
+---
 
 ## 🛠 Requirements
-- Python 3.9+ (Must be installed and added to PATH).
-- Internet Connection (Optional, only for downloading genomes from NCBI/BLAST).
+* Python **3.9+** (must be installed and added to PATH)
+* Internet connection *(optional; only required for NCBI genome download and BLAST annotation)*
+
+---
+
+## 🚀 Final Step
+1. **Commit** the new YAML.
+2. **Commit** the fixed README on the GitHub website.
+3. Run the workflow manually.
+
+**Why this will work forever:**  
+The robot now generates a new file `traffic/traffic_badge.svg`. It **never** opens, reads, or writes `README.md`. Your README is therefore isolated from automated modification and remains stable.
