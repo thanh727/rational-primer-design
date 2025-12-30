@@ -1,37 +1,40 @@
-==============================================================================
-🧬 RATIONAL PRIMER DESIGN PIPELINE - USER MANUAL
-==============================================================================
+@echo off
+setlocal
+title 🧬 Installing Rational Primer Design...
 
-Welcome! This tool automatically designs and validates TaqMan primers/probes 
-for diagnostic assays.
+echo ========================================================
+echo 🧬 RATIONAL PRIMER DESIGN - INSTALLER
+echo ========================================================
+echo.
 
-------------------------------------------------------------------------------
-⚙️ CONFIGURATION (config/parameters.json)
-------------------------------------------------------------------------------
-You can control the biology of the design by editing 'config/parameters.json':
+:: 1. Check for Python
+python --version >nul 2>&1
+if %errorlevel% neq 0 (
+    echo [ERROR] Python is not installed or not in your PATH.
+    echo Please install Python 3.9+ and try again.
+    pause
+    exit /b
+)
 
-  1. Sampling Sizes:
-     - Set to 0 to use ALL available genomes (Highest Accuracy).
-     - Set to small numbers (e.g., 10) for quick tests.
+:: 2. Upgrade PIP (Good practice)
+echo [*] Upgrading pip...
+python -m pip install --upgrade pip
 
-  2. Biological Specs:
-     - product_size_min/max: The allowed length of the PCR amplicon.
-     - min_sensitivity: Discard primers that don't detect at least this % of targets.
+:: 3. Install the Tool (Editable Mode)
+:: This replaces the manual command "pip install -e ."
+echo.
+echo [*] Installing Rational Primer Design package...
+python -m pip install -e .
 
-------------------------------------------------------------------------------
-🚀 HOW TO RUN
-------------------------------------------------------------------------------
-1. Double-click "RUN_PIPELINE.bat".
-2. Enter a Project Name (e.g., "Salmonella_Test").
-3. When asked, you can drag "config/parameters.json" into the window 
-   (or just press Enter to use it automatically).
-4. Select your mode (Download from NCBI or Local Files).
-5. Drag and drop your data folders if requested.
+:: 4. Install GUI Dependencies explicitly (just to be safe)
+echo.
+echo [*] Verifying GUI dependencies...
+python -m pip install streamlit tkinter
 
-------------------------------------------------------------------------------
-📊 OUTPUT
-------------------------------------------------------------------------------
-Check your new project folder for "FINAL_ASSAY.csv".
-- It contains sequences, Tm, Sensitivity, and Specificity stats.
-
-==============================================================================
+echo.
+echo ========================================================
+echo ✅ INSTALLATION COMPLETE!
+echo ========================================================
+echo You can now use "run_app.bat" to start the tool.
+echo.
+pause
