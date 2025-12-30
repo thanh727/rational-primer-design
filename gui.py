@@ -15,6 +15,8 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display:none;}
+    /* Compact styling for search rows */
+    .stButton button { margin-top: 0px; }
 </style>
 """, unsafe_allow_html=True)
 
@@ -25,12 +27,10 @@ st.markdown("A high-performance pipeline for designing and validating TaqMan ass
 with st.sidebar:
     st.header("⚙️ Advanced Configuration")
     
-    # --- NEW: BLAST OPTION ADDED HERE ---
     st.subheader("Workflow Options")
     use_blast = st.checkbox("Enable Target Gene Annotation (BLAST)", value=True, 
                             help="If checked, the pipeline will blast candidates against the database to find gene names.")
     st.divider()
-    # ------------------------------------
 
     with st.expander("🧬 Biological Parameters", expanded=True):
         min_sens = st.slider("Min Sensitivity (%)", 50.0, 100.0, 95.0, 0.1)
@@ -58,50 +58,42 @@ with st.sidebar:
 
 # --- HELPER: FOLDER SELECTION CALLBACK ---
 def select_folder_callback(session_key):
-    """
-    Opens a native OS dialog.
-    IMPORTANT: Updates the specific session_state key used by the text_input.
-    """
     try:
-        # Create hidden root window
         root = tk.Tk()
         root.withdraw()
-        root.wm_attributes('-topmost', 1) # Make it float on top
-        
-        # Open dialog
+        root.wm_attributes('-topmost', 1)
         folder_path = filedialog.askdirectory(master=root)
-        
-        # Clean up
         root.destroy()
-        
-        # Update the key directly. Streamlit will re-render with this value.
         if folder_path:
             st.session_state[session_key] = folder_path
-            
     except Exception as e:
         st.error(f"Error opening folder dialog: {e}")
 
-# --- INITIALIZE SESSION STATE IF MISSING ---
-if "path_t_val" not in st.session_state:
-    st.session_state["path_t_val"] = ""
-if "path_b_val" not in st.session_state:
-    st.session_state["path_b_val"] = ""
-if "l_out_val" not in st.session_state:
-    st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
+# --- INITIALIZE SESSION STATE ---
+# Paths
+if "path_t_val" not in st.session_state: st.session_state["path_t_val"] = ""
+if "path_b_val" not in st.session_state: st.session_state["path_b_val"] = ""
+if "l_out_val" not in st.session_state: st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
+if "out_dir_val" not in st.session_state: st.session_state["out_dir_val"] = "results_auto"
+
+# Dynamic Search Lists (List of dicts: {'query': str, 'size': float})
+if "target_list" not in st.session_state:
+    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
+if "bg_list" not in st.session_state:
+    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
 
 # --- MAIN TABS ---
 tab_auto, tab_local = st.tabs(["🤖 Automatic Mode (NCBI)", "📂 Local File Mode"])
 
 # --- HELPER: RUN PIPELINE ---
 def run_pipeline(cmd):
-    """Runs the CLI command and streams output to Streamlit"""
     st.divider()
     st.header("📝 Execution Logs")
     
     log_area = st.empty()
     logs = []
 
-    # --- ENCODING FIX FOR WINDOWS ---
+    # Windows Encoding Fix
     my_env = os.environ.copy()
     my_env["PYTHONIOENCODING"] = "utf-8"
     
@@ -151,7 +143,7 @@ def save_params():
         "validation_target_sampling_size": samp_vt,
         "validation_background_sampling_size": samp_vb,
         "design_max_candidates": 50,
-        "enable_blast": use_blast  # <--- LINKED TO CHECKBOX
+        "enable_blast": use_blast
     }
     os.makedirs("config", exist_ok=True)
     path = "config/gui_params.json"
@@ -167,22 +159,108 @@ with tab_auto:
     email = col1.text_input("NCBI Email (Required)", placeholder="email@example.com")
     project_name = col2.text_input("Project Name", value="Auto_Run_01")
     
-    st.markdown("#### 🎯 Search Queries")
-    t_query = st.text_input("Target Query", placeholder="e.g., Salmonella enterica[Org] AND complete genome")
-    b_query = st.text_input("Background Query", placeholder="e.g., Escherichia coli[Org] AND complete genome")
+    st.markdown("---")
     
-    out_dir = st.text_input("Output Folder", value="results_auto")
+    # --- DYNAMIC TARGET SECTION ---
+    st.markdown("#### 🎯 Target Group (Inclusion)")
+    for i, item in enumerate(st.session_state["target_list"]):
+        c1, c2, c3 = st.columns([6, 2, 1])
+        with c1:
+            item["query"] = st.text_input(
+                f"Target Query #{i+1}", 
+                value=item["query"], 
+                key=f"t_q_{i}", 
+                placeholder="e.g., Salmonella enterica[Org] AND complete genome"
+            )
+        with c2:
+            item["size"] = st.number_input(
+                f"Min Size (Mb) #{i+1}", 
+                value=item["size"], 
+                min_value=0.0, 
+                step=0.1, 
+                key=f"t_s_{i}",
+                help="Genomes smaller than this will be skipped."
+            )
+        with c3:
+            st.write("") # Spacer
+            st.write("")
+            if i > 0: # Prevent deleting the first row
+                if st.button("❌", key=f"del_t_{i}"):
+                    st.session_state["target_list"].pop(i)
+                    st.rerun()
+
+    if st.button("➕ Add Target Search", key="add_t"):
+        st.session_state["target_list"].append({"query": "", "size": 0.0})
+        st.rerun()
+
+    st.markdown("---")
+
+    # --- DYNAMIC BACKGROUND SECTION ---
+    st.markdown("#### 🛡️ Background Group (Exclusion)")
+    for i, item in enumerate(st.session_state["bg_list"]):
+        c1, c2, c3 = st.columns([6, 2, 1])
+        with c1:
+            item["query"] = st.text_input(
+                f"Background Query #{i+1}", 
+                value=item["query"], 
+                key=f"b_q_{i}", 
+                placeholder="e.g., Escherichia coli[Org] AND complete genome"
+            )
+        with c2:
+            item["size"] = st.number_input(
+                f"Min Size (Mb) #{i+1}", 
+                value=item["size"], 
+                min_value=0.0, 
+                step=0.1, 
+                key=f"b_s_{i}"
+            )
+        with c3:
+            st.write("")
+            st.write("")
+            if i > 0:
+                if st.button("❌", key=f"del_b_{i}"):
+                    st.session_state["bg_list"].pop(i)
+                    st.rerun()
+
+    if st.button("➕ Add Background Search", key="add_b"):
+        st.session_state["bg_list"].append({"query": "", "size": 0.0})
+        st.rerun()
+    
+    st.markdown("---")
+
+    # --- OUTPUT & RUN ---
+    col_o1, col_o2 = st.columns([4, 1])
+    with col_o1:
+        out_dir = st.text_input("Output Folder", key="out_dir_val")
+    with col_o2:
+        st.write("") 
+        st.write("") 
+        st.button("📂 Browse", key="btn_auto_out", on_click=select_folder_callback, args=("out_dir_val",))
     
     if st.button("🚀 Start Auto Pipeline", type="primary"):
+        # Validate Inputs
+        t_valid = [x for x in st.session_state["target_list"] if x["query"].strip()]
+        b_valid = [x for x in st.session_state["bg_list"] if x["query"].strip()]
+
         if not email or "@" not in email:
             st.error("Please enter a valid email.")
-        elif not t_query or not b_query:
-            st.error("Please enter both Target and Background queries.")
+        elif not t_valid:
+            st.error("❌ You must provide at least one valid Target query.")
+        elif not b_valid:
+            st.error("❌ You must provide at least one valid Background query.")
         else:
             param_file = save_params()
             
-            t_conf = {"t1": [t_query, 0.0]}
-            b_conf = {"b1": [b_query, 0.0]}
+            # --- CONSTRUCT DYNAMIC CONFIGS ---
+            # t_conf format: {"t1": [query, size], "t2": [query, size]}
+            t_conf = {}
+            for idx, item in enumerate(t_valid):
+                t_conf[f"t{idx+1}"] = [item["query"], item["size"]]
+            
+            b_conf = {}
+            for idx, item in enumerate(b_valid):
+                b_conf[f"b{idx+1}"] = [item["query"], item["size"]]
+            # ---------------------------------
             
             os.makedirs("config", exist_ok=True)
             with open("config/t_conf.json", "w") as f: json.dump(t_conf, f)
@@ -204,7 +282,6 @@ with tab_local:
     
     l_proj = st.text_input("Local Project Name", value="Local_Run_01")
     
-    # --- TARGET FOLDER SELECTION ---
     col_t1, col_t2 = st.columns([4, 1])
     with col_t1:
         path_t = st.text_input("Path to Target Folder", key="path_t_val")
@@ -213,7 +290,6 @@ with tab_local:
         st.write("") 
         st.button("📂 Browse", key="btn_t", on_click=select_folder_callback, args=("path_t_val",))
 
-    # --- BACKGROUND FOLDER SELECTION ---
     col_b1, col_b2 = st.columns([4, 1])
     with col_b1:
         path_b = st.text_input("Path to Background Folder", key="path_b_val")
@@ -222,7 +298,6 @@ with tab_local:
         st.write("") 
         st.button("📂 Browse", key="btn_b", on_click=select_folder_callback, args=("path_b_val",))
     
-    # --- OUTPUT FOLDER SELECTION ---
     col_o1, col_o2 = st.columns([4, 1])
     with col_o1:
         l_out = st.text_input("Local Output Folder", key="l_out_val")

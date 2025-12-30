@@ -1,1 +1,1 @@
-{"b1": ["\"Streptococcus parasuis\"[ORGANISM] and \"complete genome\"[title]", 0.0]}
+{"b1": ["\"streptococcus oralis\"[organism] AND \"complete genome\"[title]", 1.7], "b2": ["\"streptococcus mitis\"[organism] AND \"complete genome\"[title]", 1.7]}
