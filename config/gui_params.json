@@ -12,5 +12,5 @@
     "validation_target_sampling_size": 0,
     "validation_background_sampling_size": 200,
     "design_max_candidates": 50,
-    "enable_blast": true
+    "enable_blast": false
 }

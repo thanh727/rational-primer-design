@@ -4,6 +4,7 @@ README.md
 requirements.txt
 setup.py
 config/background.json
+config/gui_params.json
 config/parameters.json
 config/target.json
 database/background/.gitkeep

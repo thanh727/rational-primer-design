@@ -25,6 +25,13 @@ st.markdown("A high-performance pipeline for designing and validating TaqMan ass
 with st.sidebar:
     st.header("⚙️ Advanced Configuration")
     
+    # --- NEW: BLAST OPTION ADDED HERE ---
+    st.subheader("Workflow Options")
+    use_blast = st.checkbox("Enable Target Gene Annotation (BLAST)", value=True, 
+                            help="If checked, the pipeline will blast candidates against the database to find gene names.")
+    st.divider()
+    # ------------------------------------
+
     with st.expander("🧬 Biological Parameters", expanded=True):
         min_sens = st.slider("Min Sensitivity (%)", 50.0, 100.0, 95.0, 0.1)
         min_cons = st.slider("Min Conservation (0-1)", 0.5, 1.0, 0.90, 0.01)
@@ -75,7 +82,6 @@ def select_folder_callback(session_key):
         st.error(f"Error opening folder dialog: {e}")
 
 # --- INITIALIZE SESSION STATE IF MISSING ---
-# We initialize the keys used by the text_inputs so they don't throw errors on first load
 if "path_t_val" not in st.session_state:
     st.session_state["path_t_val"] = ""
 if "path_b_val" not in st.session_state:
@@ -94,27 +100,34 @@ def run_pipeline(cmd):
     
     log_area = st.empty()
     logs = []
+
+    # --- ENCODING FIX FOR WINDOWS ---
+    my_env = os.environ.copy()
+    my_env["PYTHONIOENCODING"] = "utf-8"
     
-    # We use quotes around the command for Windows compatibility
     process = subprocess.Popen(
         cmd,
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         shell=True,
         text=True,
-        bufsize=1
+        bufsize=1,
+        env=my_env,
+        encoding="utf-8"
     )
     
     while True:
-        line = process.stdout.readline()
-        if not line and process.poll() is not None:
-            break
-        if line:
-            clean_line = line.strip()
-            logs.append(clean_line)
-            # Display last 20 lines to prevent UI lag
-            log_area.code("\n".join(logs[-20:]), language="bash")
-            print(clean_line) # Print to terminal as well
+        try:
+            line = process.stdout.readline()
+            if not line and process.poll() is not None:
+                break
+            if line:
+                clean_line = line.strip()
+                logs.append(clean_line)
+                log_area.code("\n".join(logs[-20:]), language="bash")
+                print(clean_line) 
+        except UnicodeDecodeError:
+            continue
             
     if process.returncode == 0:
         st.success("✅ Pipeline Finished Successfully!")
@@ -138,7 +151,7 @@ def save_params():
         "validation_target_sampling_size": samp_vt,
         "validation_background_sampling_size": samp_vb,
         "design_max_candidates": 50,
-        "enable_blast": True
+        "enable_blast": use_blast  # <--- LINKED TO CHECKBOX
     }
     os.makedirs("config", exist_ok=True)
     path = "config/gui_params.json"
@@ -175,7 +188,6 @@ with tab_auto:
             with open("config/t_conf.json", "w") as f: json.dump(t_conf, f)
             with open("config/b_conf.json", "w") as f: json.dump(b_conf, f)
             
-            # FIXED: Added quotes around sys.executable
             cmd = (f"\"{sys.executable}\" -u -m rational_design.cli pipeline "
                    f"--out \"{out_dir}\" "
                    f"--email \"{email}\" "
@@ -195,12 +207,10 @@ with tab_local:
     # --- TARGET FOLDER SELECTION ---
     col_t1, col_t2 = st.columns([4, 1])
     with col_t1:
-        # Key matches the one updated in the callback
         path_t = st.text_input("Path to Target Folder", key="path_t_val")
     with col_t2:
-        st.write("") # Spacer to align button
         st.write("") 
-        # on_click triggers the function BEFORE the app reruns
+        st.write("") 
         st.button("📂 Browse", key="btn_t", on_click=select_folder_callback, args=("path_t_val",))
 
     # --- BACKGROUND FOLDER SELECTION ---
@@ -224,7 +234,6 @@ with tab_local:
     st.divider()
 
     if st.button("🚀 Start Local Pipeline", type="primary"):
-        # Validate paths exist
         if not path_t or not os.path.exists(path_t):
             st.error("❌ Target folder path is invalid or empty.")
         elif not path_b or not os.path.exists(path_b):
@@ -232,7 +241,6 @@ with tab_local:
         else:
             param_file = save_params()
             
-            # FIXED: Added quotes around sys.executable
             cmd = (f"\"{sys.executable}\" -u -m rational_design.cli pipeline "
                    f"--out \"{l_out}\" "
                    f"--local_target \"{path_t}\" "
