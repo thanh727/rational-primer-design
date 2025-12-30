@@ -134,17 +134,6 @@ MyProject/            # Output directory (auto‑generated)
 
 ---
 
-## 🔄 CI / Repository Automation
-
-The repository workflow generates a standalone file:
-```
-traffic/traffic_badge.svg
-```
-
-This workflow **never modifies `README.md`**, ensuring documentation stability and long‑term reproducibility.
-
----
-
 ## 📚 Recommended References
 
 - Dieffenbach CW, Dveksler GS. *PCR Primer: A Laboratory Manual*. Cold Spring Harbor Laboratory Press.  
