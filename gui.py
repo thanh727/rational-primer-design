@@ -7,56 +7,49 @@ import tkinter as tk
 import base64
 from tkinter import filedialog
 
-# --- APP CONFIG ---
+# --- 1. APP CONFIG (MUST BE FIRST) ---
 st.set_page_config(page_title="Rational Primer Design", page_icon="🧬", layout="wide")
 
-st.markdown("""
-<style>
-    .reportview-container { margin-top: -2em; }
-    #MainMenu {visibility: hidden;}
-    footer {visibility: hidden;}
-    .stDeployButton {display:none;}
-    
-    /* Compact styling for search rows */
-    .stButton button { margin-top: 0px; }
-    
-    /* --- SCROLLABLE LOG BOX CSS --- */
-    div.stCode > div > pre {
-        max-height: 500px;
-        overflow-y: auto !important;
-        white-space: pre-wrap !important;
-    }
+# --- 2. INITIALIZE SESSION STATE ---
+if "reset_id" not in st.session_state: st.session_state["reset_id"] = 0  # <--- NEW RESET COUNTER
 
-    /* --- BIGGER / PROMINENT TABS --- */
-    /* Target the text inside the tab */
-    button[data-baseweb="tab"] div p {
-        font-size: 1.2rem !important;  /* Larger Text */
-        font-weight: 700 !important;   /* Bold Text */
-    }
-    /* Target the tab button structure */
-    button[data-baseweb="tab"] {
-        padding-top: 1rem !important;    /* Taller */
-        padding-bottom: 1rem !important; /* Taller */
-        padding-left: 2rem !important;   /* Wider */
-        padding-right: 2rem !important;  /* Wider */
-        margin-right: 10px !important;   /* Space between tabs */
-    }
-</style>
-""", unsafe_allow_html=True)
+if "email_val" not in st.session_state: st.session_state["email_val"] = ""
+if "path_t_val" not in st.session_state: st.session_state["path_t_val"] = ""
+if "path_b_val" not in st.session_state: st.session_state["path_b_val"] = ""
+if "l_out_val" not in st.session_state: st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
+if "out_dir_val" not in st.session_state: st.session_state["out_dir_val"] = "results_auto"
+if "auto_proj_val" not in st.session_state: st.session_state["auto_proj_val"] = "Auto_Run_01"
+if "local_proj_val" not in st.session_state: st.session_state["local_proj_val"] = "Local_Run_01"
 
-st.title("🧬 Rational Primer Design: Desktop App")
-st.markdown("A high-performance pipeline for designing and validating TaqMan assays.")
+if "target_list" not in st.session_state:
+    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
+if "bg_list" not in st.session_state:
+    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
 
-# --- HELPER: RESET APP (PRESERVE EMAIL) ---
+# --- 3. HELPER FUNCTIONS ---
+
 def reset_app():
     """
-    Clears all session state variables EXCEPT the email address.
+    Resets the app by clearing fields and incrementing the Reset ID.
+    Changing the ID forces Streamlit to re-create the dynamic widgets fresh.
     """
-    saved_email = st.session_state.get("email_val", "")
-    st.session_state.clear()
-    st.session_state["email_val"] = saved_email
+    # 1. Reset Static Fields (Local Mode)
+    st.session_state["path_t_val"] = ""
+    st.session_state["path_b_val"] = ""
+    st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
+    st.session_state["out_dir_val"] = "results_auto"
+    st.session_state["auto_proj_val"] = "Auto_Run_01"
+    st.session_state["local_proj_val"] = "Local_Run_01"
+    
+    # 2. Reset Data Lists (Auto Mode)
+    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
+    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
+    
+    # 3. FORCE WIDGET REFRESH
+    # Incrementing this number changes the keys of the dynamic inputs, 
+    # ensuring they render as brand new (empty) boxes.
+    st.session_state["reset_id"] += 1
 
-# --- HELPER: MAKE IMAGE CLICKABLE ---
 def get_clickable_image_html(image_path, target_url):
     try:
         with open(image_path, "rb") as f:
@@ -66,9 +59,50 @@ def get_clickable_image_html(image_path, target_url):
     except Exception:
         return None
 
-# --- SIDEBAR: CONFIGURATION ---
+def select_folder_callback(session_key):
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        root.wm_attributes('-topmost', 1)
+        folder_path = filedialog.askdirectory(master=root)
+        root.destroy()
+        if folder_path:
+            st.session_state[session_key] = folder_path
+    except Exception as e:
+        st.error(f"Error opening folder dialog: {e}")
+
+# --- 4. CSS STYLING ---
+st.markdown("""
+<style>
+    .reportview-container { margin-top: -2em; }
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    .stDeployButton {display:none;}
+    
+    .stButton button { margin-top: 0px; }
+    
+    div.stCode > div > pre {
+        max-height: 500px;
+        overflow-y: auto !important;
+        white-space: pre-wrap !important;
+    }
+
+    button[data-baseweb="tab"] div p {
+        font-size: 1.2rem !important; 
+        font-weight: 700 !important;
+    }
+    button[data-baseweb="tab"] {
+        padding: 1rem 2rem !important;
+        margin-right: 10px !important;
+    }
+</style>
+""", unsafe_allow_html=True)
+
+st.title("🧬 Rational Primer Design: Desktop App")
+st.markdown("A high-performance pipeline for designing and validating TaqMan assays.")
+
+# --- 5. SIDEBAR ---
 with st.sidebar:
-    # --- RESET BUTTON ---
     if st.button("🗑️ Reset Search Fields", on_click=reset_app, help="Clear inputs (keeps Email) to start over."):
         st.rerun()
     
@@ -104,7 +138,6 @@ with st.sidebar:
     st.markdown("---")
     st.info("Settings are saved automatically when you run the pipeline.")
     
-    # --- AUTHOR & WEBSITE SECTION ---
     st.markdown("---")
     st.markdown("### 🌐 About")
     
@@ -123,37 +156,9 @@ with st.sidebar:
     st.markdown("Powered by **Genomessages**")
     st.caption("Advanced Bioinformatics Solutions")
 
-# --- HELPER: FOLDER SELECTION CALLBACK ---
-def select_folder_callback(session_key):
-    try:
-        root = tk.Tk()
-        root.withdraw()
-        root.wm_attributes('-topmost', 1)
-        folder_path = filedialog.askdirectory(master=root)
-        root.destroy()
-        if folder_path:
-            st.session_state[session_key] = folder_path
-    except Exception as e:
-        st.error(f"Error opening folder dialog: {e}")
-
-# --- INITIALIZE SESSION STATE ---
-if "email_val" not in st.session_state: st.session_state["email_val"] = ""
-if "path_t_val" not in st.session_state: st.session_state["path_t_val"] = ""
-if "path_b_val" not in st.session_state: st.session_state["path_b_val"] = ""
-if "l_out_val" not in st.session_state: st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
-if "out_dir_val" not in st.session_state: st.session_state["out_dir_val"] = "results_auto"
-if "auto_proj_val" not in st.session_state: st.session_state["auto_proj_val"] = "Auto_Run_01"
-if "local_proj_val" not in st.session_state: st.session_state["local_proj_val"] = "Local_Run_01"
-
-if "target_list" not in st.session_state:
-    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
-if "bg_list" not in st.session_state:
-    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
-
-# --- MAIN TABS ---
+# --- 6. MAIN CONTENT ---
 tab_auto, tab_local = st.tabs(["🤖 Automatic Mode (NCBI)", "📂 Local File Mode"])
 
-# --- HELPER: RUN PIPELINE ---
 def run_pipeline(cmd):
     st.divider()
     st.header("📝 Execution Logs")
@@ -183,12 +188,8 @@ def run_pipeline(cmd):
             if line:
                 clean_line = line.strip()
                 logs.append(clean_line)
-                
-                # Update GUI Log
                 full_log_text = "\n".join(logs[-5000:])
                 log_area.code(full_log_text, language="bash")
-                
-                # Terminal output suppressed to avoid duplicate scrolling
         except UnicodeDecodeError:
             continue
             
@@ -198,7 +199,6 @@ def run_pipeline(cmd):
     else:
         st.error("❌ Pipeline Failed. Check the logs above.")
 
-# --- HELPER: SAVE CONFIG ---
 def save_params():
     params = {
         "min_sensitivity": min_sens,
@@ -233,6 +233,7 @@ with tab_auto:
     st.markdown("---")
     
     # --- DYNAMIC TARGET SECTION ---
+    # NOTE: We append 'st.session_state.reset_id' to keys to force freshness on reset
     st.markdown("#### 🎯 Target Group (Inclusion)")
     for i, item in enumerate(st.session_state["target_list"]):
         c1, c2, c3 = st.columns([6, 2, 1])
@@ -240,7 +241,8 @@ with tab_auto:
             item["query"] = st.text_input(
                 f"Target Query #{i+1}", 
                 value=item["query"], 
-                key=f"t_q_{i}", 
+                # UNIQUE KEY: index + reset_id
+                key=f"t_q_{i}_{st.session_state.reset_id}", 
                 placeholder="e.g., Salmonella enterica[Org] AND complete genome"
             )
         with c2:
@@ -249,14 +251,15 @@ with tab_auto:
                 value=item["size"], 
                 min_value=0.0, 
                 step=0.1, 
-                key=f"t_s_{i}",
+                # UNIQUE KEY: index + reset_id
+                key=f"t_s_{i}_{st.session_state.reset_id}",
                 help="Genomes smaller than this will be skipped."
             )
         with c3:
             st.write("") 
             st.write("")
             if i > 0: 
-                if st.button("❌", key=f"del_t_{i}"):
+                if st.button("❌", key=f"del_t_{i}_{st.session_state.reset_id}"):
                     st.session_state["target_list"].pop(i)
                     st.rerun()
 
@@ -274,7 +277,7 @@ with tab_auto:
             item["query"] = st.text_input(
                 f"Background Query #{i+1}", 
                 value=item["query"], 
-                key=f"b_q_{i}", 
+                key=f"b_q_{i}_{st.session_state.reset_id}", 
                 placeholder="e.g., Escherichia coli[Org] AND complete genome"
             )
         with c2:
@@ -283,13 +286,13 @@ with tab_auto:
                 value=item["size"], 
                 min_value=0.0, 
                 step=0.1, 
-                key=f"b_s_{i}"
+                key=f"b_s_{i}_{st.session_state.reset_id}"
             )
         with c3:
             st.write("")
             st.write("")
             if i > 0:
-                if st.button("❌", key=f"del_b_{i}"):
+                if st.button("❌", key=f"del_b_{i}_{st.session_state.reset_id}"):
                     st.session_state["bg_list"].pop(i)
                     st.rerun()
 
@@ -299,7 +302,7 @@ with tab_auto:
     
     st.markdown("---")
 
-    # --- OUTPUT & RUN ---
+    # Output & Run
     col_o1, col_o2 = st.columns([4, 1])
     with col_o1:
         out_dir = st.text_input("Output Folder", key="out_dir_val")
