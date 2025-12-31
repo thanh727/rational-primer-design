@@ -1,5 +1,9 @@
 
 # Rational Primer Design Pipeline 🧬
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18103221.svg)](https://doi.org/10.5281/zenodo.18103221)
+
+**A high-performance pipeline for designing and validating TaqMan assays.**
+...
 
 A high-performance, parallelized bioinformatics framework for **designing, optimizing, and validating TaqMan qPCR assays** across large-scale genomic datasets.
 
@@ -127,8 +131,26 @@ All biological and computational parameters are configured interactively via the
 
 ---
 
-## 📚 Recommended References
+## 📚 References
 
 - Dieffenbach CW, Dveksler GS. *PCR Primer: A Laboratory Manual*. Cold Spring Harbor Laboratory Press.
 - Thornton B, Basu C. Rapid and specific detection of bacteria by TaqMan PCR. *Journal of Microbiological Methods*.
 - Untergasser A, et al. Primer3—new capabilities and interfaces. *Nucleic Acids Research*.
+
+## 📚 Citation
+If you use Rational Primer Design in your research, please cite the specific version used:
+
+> **Nguyen, T.** (2025). *Rational Primer Design: High-performance automated assay design pipeline (Version 1.0.3)*. 
+> Zenodo. https://doi.org/10.5281/zenodo.18103221
+
+Or use the BibTeX:
+```bibtex
+@software{Nguyen_Rational_Primer_Design_2025,
+  author = {Nguyen, Thanh},
+  title = {{Rational Primer Design}},
+  version = {1.0.3},
+  year = {2025},
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.18103221},
+  url = {[https://github.com/thanh727/rational-primer-design](https://github.com/thanh727/rational-primer-design)}
+}
