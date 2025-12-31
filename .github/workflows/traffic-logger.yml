@@ -15,7 +15,9 @@ jobs:
         uses: actions/checkout@v3
         with:
           ref: main
-          token: ${{ secrets.TRAFFIC_TOKEN }}
+          # Use the PAT here if you want to trigger other workflows, 
+          # otherwise the default GITHUB_TOKEN is safer for checkout.
+          token: ${{ secrets.TRAFFIC_TOKEN || github.token }}
 
       - name: Install Python Dependencies
         run: |
@@ -23,7 +25,8 @@ jobs:
 
       - name: Fetch Data and Generate Badge
         env:
-          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }}
+          # This MUST be a PAT with 'repo' scope, not the default GITHUB_TOKEN
+          TRAFFIC_TOKEN: ${{ secrets.TRAFFIC_TOKEN }} 
           REPO: ${{ github.repository }}
         run: |
           python3 -c "
@@ -31,10 +34,16 @@ jobs:
           import requests
           import csv
           import pandas as pd
+          import sys
 
           # --- CONFIG ---
-          token = os.environ['TRAFFIC_TOKEN']
-          repo = os.environ['REPO']
+          token = os.environ.get('TRAFFIC_TOKEN')
+          repo = os.environ.get('REPO')
+          
+          if not token:
+              print('❌ Error: TRAFFIC_TOKEN is missing. Check your Secrets.')
+              sys.exit(1)
+
           headers = {'Authorization': f'token {token}', 'Accept': 'application/vnd.github.v3+json'}
           base_url = f'https://api.github.com/repos/{repo}/traffic'
           
@@ -46,42 +55,64 @@ jobs:
               file_path = f'traffic/{filename}'
               data_map = {} 
               
+              # 1. Read existing data to preserve history
               if os.path.exists(file_path):
-                  with open(file_path, 'r') as f:
-                      reader = csv.reader(f)
-                      next(reader, None)
-                      for row in reader:
-                          if row: data_map[row[0]] = [int(row[1]), int(row[2])]
+                  try:
+                      with open(file_path, 'r') as f:
+                          reader = csv.reader(f)
+                          next(reader, None) # Skip header
+                          for row in reader:
+                              if row and len(row) >= 3:
+                                  data_map[row[0]] = [int(row[1]), int(row[2])]
+                  except Exception as e:
+                      print(f'⚠️ Warning reading {filename}: {e}')
 
+              # 2. Merge new API data (Updates today, adds new days)
               for entry in api_data:
                   date = entry['timestamp'][:10]
                   data_map[date] = [entry['count'], entry['uniques']]
 
+              # 3. Write back to CSV
               with open(file_path, 'w', newline='') as f:
                   writer = csv.writer(f)
                   writer.writerow(headers_row)
                   for date in sorted(data_map.keys()):
                       writer.writerow([date, data_map[date][0], data_map[date][1]])
+              
+              print(f'✅ Updated {filename} successfully.')
 
           # --- FETCH DATA ---
+          print(f'📡 Fetching traffic for {repo}...')
+          
+          # 1. Views
           r_views = requests.get(f'{base_url}/views?per=day', headers=headers)
           if r_views.status_code == 200:
               update_csv('views.csv', r_views.json()['views'], ['Date', 'count', 'uniques'])
-          
+          else:
+              print(f'❌ Error fetching views: {r_views.status_code} - {r_views.text}')
+              sys.exit(1) # Fail the job so you see the red X
+
+          # 2. Clones
           r_clones = requests.get(f'{base_url}/clones?per=day', headers=headers)
           if r_clones.status_code == 200:
               update_csv('clones.csv', r_clones.json()['clones'], ['Date', 'count', 'uniques'])
+          else:
+              print(f'❌ Error fetching clones: {r_clones.status_code} - {r_clones.text}')
+              sys.exit(1)
 
           # --- CALCULATE TOTALS ---
           total_views = 0
           total_clones = 0
+          
           if os.path.exists('traffic/views.csv'):
-              total_views = pd.read_csv('traffic/views.csv')['count'].sum()
+              df_v = pd.read_csv('traffic/views.csv')
+              if not df_v.empty: total_views = df_v['count'].sum()
+              
           if os.path.exists('traffic/clones.csv'):
-              total_clones = pd.read_csv('traffic/clones.csv')['count'].sum()
+              df_c = pd.read_csv('traffic/clones.csv')
+              if not df_c.empty: total_clones = df_c['count'].sum()
 
-          # --- GENERATE SVG BADGE (NO TEXT FILE EDITING) ---
-          # This creates a vector image that looks like a badge
+          # --- GENERATE SVG BADGE ---
           svg_content = f'''<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"250\" height=\"20\">
             <linearGradient id=\"b\" x2=\"0\" y2=\"100%\"><stop offset=\"0\" stop-color=\"#bbb\" stop-opacity=\".1\"/><stop offset=\"1\" stop-opacity=\".1\"/></linearGradient>
             <mask id=\"a\"><rect width=\"250\" height=\"20\" rx=\"3\" fill=\"#fff\"/></mask>
@@ -100,7 +131,8 @@ jobs:
           
           with open('traffic/traffic_badge.svg', 'w') as f:
               f.write(svg_content)
-          print(f'Generated Badge: Views {total_views}, Clones {total_clones}')
+          
+          print(f'🎉 Badge Generated: Views {total_views}, Clones {total_clones}')
           "
 
       - name: Commit changes
