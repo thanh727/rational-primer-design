@@ -1,1 +1,1 @@
-{"b1": ["\"streptococcus parasuis\"[organism] AND \"complete genome\"[title]", 1.7], "b2": ["\"streptococcus oralis\"[organism] AND \"complete genome\"[title]", 1.7], "b3": ["\"streptococcus mitis\"[organism] AND \"complete genome\"[title]", 1.7]}
+{"b1": ["((\"Klebsiella pneumoniae\"[Organism] OR klebsiella pneumoniae[All Fields]) AND complete genome[title]) AND (\"2025/06/06\"[MDAT] : \"3000\"[MDAT]) AND (\"5520000\"[SLEN] : \"6000000\"[SLEN])", 3.5]}

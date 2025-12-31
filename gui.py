@@ -11,7 +11,7 @@ from tkinter import filedialog
 st.set_page_config(page_title="Rational Primer Design", page_icon="🧬", layout="wide")
 
 # --- 2. INITIALIZE SESSION STATE ---
-if "reset_id" not in st.session_state: st.session_state["reset_id"] = 0  # <--- NEW RESET COUNTER
+if "reset_id" not in st.session_state: st.session_state["reset_id"] = 0 
 
 if "email_val" not in st.session_state: st.session_state["email_val"] = ""
 if "path_t_val" not in st.session_state: st.session_state["path_t_val"] = ""
@@ -46,8 +46,6 @@ def reset_app():
     st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
     
     # 3. FORCE WIDGET REFRESH
-    # Incrementing this number changes the keys of the dynamic inputs, 
-    # ensuring they render as brand new (empty) boxes.
     st.session_state["reset_id"] += 1
 
 def get_clickable_image_html(image_path, target_url):
@@ -153,7 +151,8 @@ with st.sidebar:
             st.image(logo_file, use_container_width=True)
 
     st.markdown("**Developed by Thanh Nguyen, PhD**")
-    st.markdown("Powered by **Genomessages**")
+    # UPDATED LINE BELOW:
+    st.markdown("Powered by **[https://genomessages.com/](https://genomessages.com/)**")
     st.caption("Advanced Bioinformatics Solutions")
 
 # --- 6. MAIN CONTENT ---
