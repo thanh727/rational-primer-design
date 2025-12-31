@@ -31,107 +31,142 @@ Dynamic: summary
 
 # Rational Primer Design Pipeline 🧬
 
-A high-performance, parallelized bioinformatics tool for designing and validating TaqMan PCR assays.
+A high‑performance, parallelized bioinformatics framework for **designing, optimizing, and validating TaqMan qPCR assays** across large genomic datasets.
 
-### 📊 Project Growth
+---
+
+## 📊 Project Activity
 ![Traffic Stats](traffic/traffic_badge.svg)
 
 ---
 
-## 🚀 Features
-* **Automated Design:** Mines conserved regions from target genomes using a 2-Bit integer algorithm.
-* **In-Silico Validation:** Simulates PCR against hundreds of background genomes using "Turbo Pigeonhole" logic.
-* **Parallel Processing:** Uses all available CPU cores for maximum speed.
-* **Smart Optimization:** Automatically relaxes constraints if strict parameters fail to find candidates.
-* **Reproducible:** Uses deterministic sampling so results are identical between runs.
-* **Cross-Platform:** Runs natively on **Windows**, **macOS**, and **Linux**.
+## 🚀 Key Features
+
+- **Automated Primer & Probe Design**  
+  Identifies conserved genomic regions using a fast **2‑bit integer encoding** strategy for scalable sequence comparison.
+
+- **In‑Silico PCR Validation**  
+  Screens candidate assays against hundreds to thousands of background genomes using a *Turbo Pigeonhole*–based mismatch pruning algorithm.
+
+- **High‑Performance Parallelization**  
+  Fully utilizes available CPU cores to accelerate candidate generation and validation.
+
+- **Adaptive Constraint Relaxation**  
+  Automatically relaxes biological constraints when no valid candidates are found under strict parameters.
+
+- **Deterministic & Reproducible**  
+  Deterministic sampling ensures identical results across repeated runs with the same inputs.
+
+- **Cross‑Platform Support**  
+  Native execution on **Windows**, **macOS**, and **Linux**.
 
 ---
 
 ## 📦 Installation
 
 ### 🪟 Windows
-1. Open your **cmd**.
-2. Navigate to this folder:
-   ```bash
-   cd /path/to/rational_primer_design
-   pip install -e .
-   ```  
-   *(This installs Python dependencies and registers the `rational-design` command).*
 
-### 🍎 macOS / 🐧 Linux
-1. Open your **Terminal**.
-2. Navigate to this folder:
+1. Open **Command Prompt**.
+2. Navigate to the project directory:
    ```bash
    cd /path/to/rational_primer_design
    ```
-3. Make the scripts executable (only needed once):
+3. Install in editable mode:
    ```bash
-   chmod +x INSTALL.sh RUN_PIPELINE.sh
+   pip install -e .
    ```
-4. Run the installer:
-   ```bash
-   ./INSTALL.sh
-   ```
+   This installs all dependencies and registers the `rational-design` command.
 
 ---
 
-## 🏃‍♂️ How to Run
+### 🍎 macOS / 🐧 Linux
+
+#### 1. Prerequisite: Tkinter
+
+**Ubuntu / Debian**
+```bash
+sudo apt-get update
+sudo apt-get install python3-tk
+```
+
+**macOS**
+If Python was installed via Homebrew, Tkinter is usually included. If missing:
+```bash
+brew install python-tk
+```
+
+#### 2. Install the pipeline
+
+```bash
+cd /path/to/rational_primer_design
+chmod +x INSTALL.sh RUN_PIPELINE.sh RUN_APP_UX.sh
+./INSTALL.sh
+```
+
+---
+
+## 🏃‍♂️ Running the Pipeline
 
 ### 🪟 Windows
-Double-click **`RUN_PIPELINE.bat`**.
+Double‑click:
+```
+RUN_APP.bat
+```
 
-Follow the on-screen prompts to select your Project Name and Data Mode.
+Follow the on‑screen prompts to select:
+- Project name  
+- Target/background genome mode  
 
 ### 🍎 macOS / 🐧 Linux
-Open Terminal and run:
 ```bash
-./RUN_PIPELINE.sh
+./RUN_APP_UX.sh
 ```
-Follow the on-screen prompts.
+Follow the interactive prompts.
 
 ---
 
 ## ⚙️ Configuration
-You can customize the biological parameters by editing:
 
-```text
+All biological and computational parameters are defined in:
+
+```
 config/parameters.json
 ```
 
 | Parameter | Default | Description |
 |---------|---------|-------------|
-| design_target_sampling_size | 0 | Number of genomes to use for design. 0 = Use ALL (Highest Accuracy). |
-| design_max_candidates | 10 | Number of primer pairs to attempt in the first cycle. |
-| min_sensitivity | 90.0 | Minimum % of target genomes the primer must detect. |
-| primer_length | 20 | Length of the primers (bp). |
-| product_size_min | 100 | Minimum amplicon length. |
-| product_size_max | 400 | Maximum amplicon length. |
-| enable_blast | true | Automatically annotate gene names via NCBI BLAST. |
+| design_target_sampling_size | 0 | Number of target genomes used for design (0 = all genomes; highest accuracy). |
+| design_max_candidates | 10 | Number of primer–probe sets evaluated per design cycle. |
+| min_sensitivity | 90.0 | Minimum percentage of target genomes detected. |
+| primer_length | 20 | Primer length (bp). |
+| product_size_min | 100 | Minimum amplicon size (bp). |
+| product_size_max | 400 | Maximum amplicon size (bp). |
+| enable_blast | true | Annotate amplicons using NCBI BLAST (requires internet). |
 
 ---
 
-## 📂 Folder Structure
+## 📂 Directory Structure
 
-```text
-rational_design/   # Source code (Python)
-config/            # Configuration files
-database/           # FASTA files (target/ and background/)
-MyProject/          # Output folder (generated after running)
+```
+rational_design/     # Core Python source code
+config/              # Configuration files
+database/
+ ├─ target/           # Target genome FASTA files
+ └─ background/       # Background genome FASTA files
+MyProject/            # Output directory (auto‑generated)
 ```
 
 ---
 
-## 🛠 Requirements
-* Python **3.9+** (must be installed and added to PATH)
-* Internet connection *(optional; only required for NCBI genome download and BLAST annotation)*
+## 🛠 System Requirements
+
+- **Python ≥ 3.9** (installed and available in PATH)
+- Internet connection *(optional; required only for genome download and BLAST annotation)*
 
 ---
 
-## 🚀 Final Step
-1. **Commit** the new YAML.
-2. **Commit** the fixed README on the GitHub website.
-3. Run the workflow manually.
+## 📚 Recommended References
 
-**Why this will work forever:**  
-The robot now generates a new file `traffic/traffic_badge.svg`. It **never** opens, reads, or writes `README.md`. Your README is therefore isolated from automated modification and remains stable.
+- Dieffenbach CW, Dveksler GS. *PCR Primer: A Laboratory Manual*. Cold Spring Harbor Laboratory Press.  
+- Thornton B, Basu C. Rapid and specific detection of bacteria by TaqMan PCR. *J Microbiol Methods*.  
+- Untergasser A et al. Primer3—new capabilities and interfaces. *Nucleic Acids Research*.

@@ -3,9 +3,11 @@ MANIFEST.in
 README.md
 requirements.txt
 setup.py
+config/b_conf.json
 config/background.json
 config/gui_params.json
 config/parameters.json
+config/t_conf.json
 config/target.json
 database/background/.gitkeep
 database/target/.gitkeep

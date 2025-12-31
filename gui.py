@@ -4,6 +4,7 @@ import sys
 import json
 import subprocess
 import tkinter as tk
+import base64
 from tkinter import filedialog
 
 # --- APP CONFIG ---
@@ -15,16 +16,63 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display:none;}
+    
     /* Compact styling for search rows */
     .stButton button { margin-top: 0px; }
+    
+    /* --- SCROLLABLE LOG BOX CSS --- */
+    div.stCode > div > pre {
+        max-height: 500px;
+        overflow-y: auto !important;
+        white-space: pre-wrap !important;
+    }
+
+    /* --- BIGGER / PROMINENT TABS --- */
+    /* Target the text inside the tab */
+    button[data-baseweb="tab"] div p {
+        font-size: 1.2rem !important;  /* Larger Text */
+        font-weight: 700 !important;   /* Bold Text */
+    }
+    /* Target the tab button structure */
+    button[data-baseweb="tab"] {
+        padding-top: 1rem !important;    /* Taller */
+        padding-bottom: 1rem !important; /* Taller */
+        padding-left: 2rem !important;   /* Wider */
+        padding-right: 2rem !important;  /* Wider */
+        margin-right: 10px !important;   /* Space between tabs */
+    }
 </style>
 """, unsafe_allow_html=True)
 
 st.title("🧬 Rational Primer Design: Desktop App")
 st.markdown("A high-performance pipeline for designing and validating TaqMan assays.")
 
+# --- HELPER: RESET APP (PRESERVE EMAIL) ---
+def reset_app():
+    """
+    Clears all session state variables EXCEPT the email address.
+    """
+    saved_email = st.session_state.get("email_val", "")
+    st.session_state.clear()
+    st.session_state["email_val"] = saved_email
+
+# --- HELPER: MAKE IMAGE CLICKABLE ---
+def get_clickable_image_html(image_path, target_url):
+    try:
+        with open(image_path, "rb") as f:
+            data = f.read()
+        b64_data = base64.b64encode(data).decode()
+        return f'<a href="{target_url}" target="_blank"><img src="data:image/png;base64,{b64_data}" style="width:100%; max-width:100%;"></a>'
+    except Exception:
+        return None
+
 # --- SIDEBAR: CONFIGURATION ---
 with st.sidebar:
+    # --- RESET BUTTON ---
+    if st.button("🗑️ Reset Search Fields", on_click=reset_app, help="Clear inputs (keeps Email) to start over."):
+        st.rerun()
+    
+    st.divider()
     st.header("⚙️ Advanced Configuration")
     
     st.subheader("Workflow Options")
@@ -55,6 +103,25 @@ with st.sidebar:
 
     st.markdown("---")
     st.info("Settings are saved automatically when you run the pipeline.")
+    
+    # --- AUTHOR & WEBSITE SECTION ---
+    st.markdown("---")
+    st.markdown("### 🌐 About")
+    
+    logo_file = None
+    if os.path.exists("logo.png"): logo_file = "logo.png"
+    elif os.path.exists("logo.jpg"): logo_file = "logo.jpg"
+        
+    if logo_file:
+        html_code = get_clickable_image_html(logo_file, "https://genomessages.com/")
+        if html_code:
+            st.markdown(html_code, unsafe_allow_html=True)
+        else:
+            st.image(logo_file, use_container_width=True)
+
+    st.markdown("**Developed by Thanh Nguyen, PhD**")
+    st.markdown("Powered by **Genomessages**")
+    st.caption("Advanced Bioinformatics Solutions")
 
 # --- HELPER: FOLDER SELECTION CALLBACK ---
 def select_folder_callback(session_key):
@@ -70,13 +137,14 @@ def select_folder_callback(session_key):
         st.error(f"Error opening folder dialog: {e}")
 
 # --- INITIALIZE SESSION STATE ---
-# Paths
+if "email_val" not in st.session_state: st.session_state["email_val"] = ""
 if "path_t_val" not in st.session_state: st.session_state["path_t_val"] = ""
 if "path_b_val" not in st.session_state: st.session_state["path_b_val"] = ""
 if "l_out_val" not in st.session_state: st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
 if "out_dir_val" not in st.session_state: st.session_state["out_dir_val"] = "results_auto"
+if "auto_proj_val" not in st.session_state: st.session_state["auto_proj_val"] = "Auto_Run_01"
+if "local_proj_val" not in st.session_state: st.session_state["local_proj_val"] = "Local_Run_01"
 
-# Dynamic Search Lists (List of dicts: {'query': str, 'size': float})
 if "target_list" not in st.session_state:
     st.session_state["target_list"] = [{"query": "", "size": 0.0}]
 if "bg_list" not in st.session_state:
@@ -93,7 +161,6 @@ def run_pipeline(cmd):
     log_area = st.empty()
     logs = []
 
-    # Windows Encoding Fix
     my_env = os.environ.copy()
     my_env["PYTHONIOENCODING"] = "utf-8"
     
@@ -116,8 +183,12 @@ def run_pipeline(cmd):
             if line:
                 clean_line = line.strip()
                 logs.append(clean_line)
-                log_area.code("\n".join(logs[-20:]), language="bash")
-                print(clean_line) 
+                
+                # Update GUI Log
+                full_log_text = "\n".join(logs[-5000:])
+                log_area.code(full_log_text, language="bash")
+                
+                # Terminal output suppressed to avoid duplicate scrolling
         except UnicodeDecodeError:
             continue
             
@@ -156,8 +227,8 @@ with tab_auto:
     st.subheader("Download Genomes from NCBI & Design")
     
     col1, col2 = st.columns(2)
-    email = col1.text_input("NCBI Email (Required)", placeholder="email@example.com")
-    project_name = col2.text_input("Project Name", value="Auto_Run_01")
+    email = col1.text_input("NCBI Email (Required)", placeholder="email@example.com", key="email_val")
+    project_name = col2.text_input("Project Name", key="auto_proj_val")
     
     st.markdown("---")
     
@@ -182,9 +253,9 @@ with tab_auto:
                 help="Genomes smaller than this will be skipped."
             )
         with c3:
-            st.write("") # Spacer
+            st.write("") 
             st.write("")
-            if i > 0: # Prevent deleting the first row
+            if i > 0: 
                 if st.button("❌", key=f"del_t_{i}"):
                     st.session_state["target_list"].pop(i)
                     st.rerun()
@@ -238,7 +309,6 @@ with tab_auto:
         st.button("📂 Browse", key="btn_auto_out", on_click=select_folder_callback, args=("out_dir_val",))
     
     if st.button("🚀 Start Auto Pipeline", type="primary"):
-        # Validate Inputs
         t_valid = [x for x in st.session_state["target_list"] if x["query"].strip()]
         b_valid = [x for x in st.session_state["bg_list"] if x["query"].strip()]
 
@@ -251,8 +321,6 @@ with tab_auto:
         else:
             param_file = save_params()
             
-            # --- CONSTRUCT DYNAMIC CONFIGS ---
-            # t_conf format: {"t1": [query, size], "t2": [query, size]}
             t_conf = {}
             for idx, item in enumerate(t_valid):
                 t_conf[f"t{idx+1}"] = [item["query"], item["size"]]
@@ -260,7 +328,6 @@ with tab_auto:
             b_conf = {}
             for idx, item in enumerate(b_valid):
                 b_conf[f"b{idx+1}"] = [item["query"], item["size"]]
-            # ---------------------------------
             
             os.makedirs("config", exist_ok=True)
             with open("config/t_conf.json", "w") as f: json.dump(t_conf, f)
@@ -280,7 +347,7 @@ with tab_local:
     st.subheader("Use Local FASTA Files")
     st.info("💡 Click 'Browse' to select folders. The path will appear automatically.")
     
-    l_proj = st.text_input("Local Project Name", value="Local_Run_01")
+    l_proj = st.text_input("Local Project Name", key="local_proj_val")
     
     col_t1, col_t2 = st.columns([4, 1])
     with col_t1:
