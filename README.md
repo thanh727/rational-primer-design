@@ -5,11 +5,6 @@ A high-performance, parallelized bioinformatics framework for **designing, optim
 
 ---
 
-## 📊 Project Activity
-![Traffic Stats](traffic/traffic_badge.svg)
-
----
-
 ## 🚀 Key Features
 
 - **Automated Primer & Probe Design**  
