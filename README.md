@@ -124,8 +124,8 @@ All biological and computational parameters are configured interactively via the
   - **Intel Core i5-9400 processor or equivalent**
 
   the pipeline can typically handle:
-  - Up to **500 target genomes** and **500 background genomes** for **Gram-positive bacteria**
-  - Up to **150 target genomes** and **150 background genomes** for **Gram-negative bacteria**
+  - Up to **150 target genomes** and **150 background genomes** for **Gram-positive bacteria**
+  - Up to **50 target genomes** and **50 background genomes** for **Gram-negative bacteria**
 
   These limits can be increased proportionally on systems with higher memory and computational capacity.
 
