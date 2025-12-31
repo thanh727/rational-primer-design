@@ -1,5 +1,9 @@
 
 # Rational Primer Design Pipeline 🧬
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.18103221.svg)](https://doi.org/10.5281/zenodo.18103221)
+
+**A high-performance pipeline for designing and validating TaqMan assays.**
+...
 
 A high-performance, parallelized bioinformatics framework for **designing, optimizing, and validating TaqMan qPCR assays** across large-scale genomic datasets.
 
@@ -134,17 +138,19 @@ All biological and computational parameters are configured interactively via the
 - Untergasser A, et al. Primer3—new capabilities and interfaces. *Nucleic Acids Research*.
 
 ## 📚 Citation
-If you use Rational Primer Design in your research, please cite it as follows:
+If you use Rational Primer Design in your research, please cite the specific version used:
 
-> **Nguyen, T.** (2026). *Rational Primer Design: High-performance automated assay design pipeline*. 
-> GitHub. https://github.com/thanh727/rational-primer-design
+> **Nguyen, T.** (2025). *Rational Primer Design: High-performance automated assay design pipeline (Version 1.0.3)*. 
+> Zenodo. https://doi.org/10.5281/zenodo.18103221
 
 Or use the BibTeX:
 ```bibtex
-@software{Nguyen_Rational_Primer_Design_2026,
+@software{Nguyen_Rational_Primer_Design_2025,
   author = {Nguyen, Thanh},
   title = {{Rational Primer Design}},
-  url = {[https://github.com/thanh727/rational-primer-design](https://github.com/thanh727/rational-primer-design)},
-  version = {1.0.0},
-  year = {2026}
+  version = {1.0.3},
+  year = {2025},
+  publisher = {Zenodo},
+  doi = {10.5281/zenodo.18103221},
+  url = {[https://github.com/thanh727/rational-primer-design](https://github.com/thanh727/rational-primer-design)}
 }
