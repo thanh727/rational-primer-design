@@ -127,8 +127,24 @@ All biological and computational parameters are configured interactively via the
 
 ---
 
-## 📚 Recommended References
+## 📚 References
 
 - Dieffenbach CW, Dveksler GS. *PCR Primer: A Laboratory Manual*. Cold Spring Harbor Laboratory Press.
 - Thornton B, Basu C. Rapid and specific detection of bacteria by TaqMan PCR. *Journal of Microbiological Methods*.
 - Untergasser A, et al. Primer3—new capabilities and interfaces. *Nucleic Acids Research*.
+
+## 📚 Citation
+If you use Rational Primer Design in your research, please cite it as follows:
+
+> **Nguyen, T.** (2026). *Rational Primer Design: High-performance automated assay design pipeline*. 
+> GitHub. https://github.com/thanh727/rational-primer-design
+
+Or use the BibTeX:
+```bibtex
+@software{Nguyen_Rational_Primer_Design_2026,
+  author = {Nguyen, Thanh},
+  title = {{Rational Primer Design}},
+  url = {[https://github.com/thanh727/rational-primer-design](https://github.com/thanh727/rational-primer-design)},
+  version = {1.0.0},
+  year = {2026}
+}
