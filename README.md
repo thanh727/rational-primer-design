@@ -8,7 +8,6 @@ A high‑performance, parallelized bioinformatics framework for **designing, opt
 ![Traffic Stats](traffic/traffic_badge.svg)
 
 ---
-
 ## 🚀 Key Features
 
 - **Automated Primer & Probe Design**  
@@ -33,6 +32,17 @@ A high‑performance, parallelized bioinformatics framework for **designing, opt
 
 ## 📦 Installation
 
+---
+
+### 🚀 Quick Start (Cloud Version)
+Don't want to install anything? Run the full application in your browser using our free Google Colab notebook.
+
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/thanh727/rational-primer-design/blob/main/Application_primer_design.ipynb)
+
+---
+
+### 🖥️ Desktop Installation
+Prefer to run locally on Windows/Linux? Download the latest release from the "Releases" tab.
 ### 🪟 Windows
 
 1. Open **Command Prompt**.
