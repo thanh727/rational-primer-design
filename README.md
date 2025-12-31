@@ -45,15 +45,8 @@ Don't want to install anything? Run the full application in your browser using o
 Prefer to run locally on Windows/Linux? Download the latest release from the "Releases" tab.
 ### 🪟 Windows
 
-1. Open **Command Prompt**.
-2. Navigate to the project directory:
-   ```bash
-   cd /path/to/rational_primer_design
-   ```
-3. Install in editable mode:
-   ```bash
-   pip install -e .
-   ```
+1. Download and unzip the program.
+2. Click the INSTALL.bat
    This installs all dependencies and registers the `rational-design` command.
 
 ---
@@ -78,8 +71,8 @@ brew install python-tk
 
 ```bash
 cd /path/to/rational_primer_design
-chmod +x INSTALL.sh RUN_PIPELINE.sh RUN_APP_UX.sh
-./INSTALL.sh
+chmod +x INSTALL_UX.sh RUN_APP_UX.sh
+./INSTALL_UX.sh
 ```
 
 ---
@@ -92,9 +85,7 @@ Double‑click:
 RUN_APP.bat
 ```
 
-Follow the on‑screen prompts to select:
-- Project name  
-- Target/background genome mode  
+Follow the on‑screen prompts
 
 ### 🍎 macOS / 🐧 Linux
 ```bash
@@ -106,10 +97,8 @@ Follow the interactive prompts.
 
 ## ⚙️ Configuration
 
-All biological and computational parameters are defined in:
+All biological and computational parameters are interacted in the left panel:
 
-```
-config/parameters.json
 ```
 
 | Parameter | Default | Description |
@@ -124,23 +113,28 @@ config/parameters.json
 
 ---
 
-## 📂 Directory Structure
+🛠 System Requirements
 
-```
-rational_design/     # Core Python source code
-config/              # Configuration files
-database/
- ├─ target/           # Target genome FASTA files
- └─ background/       # Background genome FASTA files
-MyProject/            # Output directory (auto‑generated)
-```
+Python ≥ 3.9
+Must be installed and available in the system PATH.
 
----
+Internet connection (optional)
+Required only for genome downloading and BLAST-based annotation steps.
 
-## 🛠 System Requirements
+Hardware considerations
+Genome capacity depends on available computational resources. On a standard desktop or laptop with:
 
-- **Python ≥ 3.9** (installed and available in PATH)
-- Internet connection *(optional; required only for genome download and BLAST annotation)*
+16 GB RAM
+
+Intel Core i5-9400 processor or equivalent
+
+the designer can typically handle:
+
+Up to 500 target genomes and 500 background genomes for Gram-positive bacteria
+
+Up to 150 target genomes and 150 background genomes for Gram-negative bacteria
+
+These limits can be increased proportionally on systems with greater memory and computational power.
 
 ---
 
