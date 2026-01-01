@@ -3,12 +3,29 @@ import os
 import sys
 import json
 import subprocess
-import tkinter as tk
 import base64
-from tkinter import filedialog
+import platform
 
 # --- 1. APP CONFIG (MUST BE FIRST) ---
 st.set_page_config(page_title="Rational Primer Design", page_icon="🧬", layout="wide")
+
+# --- TKINTER SAFETY CHECK (CRITICAL FOR MAC/LINUX) ---
+# macOS crashes if Tkinter runs in a thread (Streamlit).
+# Linux Servers don't have screens.
+# We disable the "Browse" popup for these cases.
+SYSTEM_OS = platform.system()
+HAS_TK = False
+
+if SYSTEM_OS == "Windows":
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+        HAS_TK = True
+    except ImportError:
+        HAS_TK = False
+else:
+    # On macOS ("Darwin") and Linux, we forcibly disable Tkinter to prevent crashes
+    HAS_TK = False
 
 # --- 2. INITIALIZE SESSION STATE ---
 if "reset_id" not in st.session_state: st.session_state["reset_id"] = 0 
@@ -33,7 +50,6 @@ def reset_app():
     Resets the app by clearing fields and incrementing the Reset ID.
     Changing the ID forces Streamlit to re-create the dynamic widgets fresh.
     """
-    # 1. Reset Static Fields (Local Mode)
     st.session_state["path_t_val"] = ""
     st.session_state["path_b_val"] = ""
     st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
@@ -41,11 +57,9 @@ def reset_app():
     st.session_state["auto_proj_val"] = "Auto_Run_01"
     st.session_state["local_proj_val"] = "Local_Run_01"
     
-    # 2. Reset Data Lists (Auto Mode)
     st.session_state["target_list"] = [{"query": "", "size": 0.0}]
     st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
     
-    # 3. FORCE WIDGET REFRESH
     st.session_state["reset_id"] += 1
 
 def get_clickable_image_html(image_path, target_url):
@@ -58,6 +72,15 @@ def get_clickable_image_html(image_path, target_url):
         return None
 
 def select_folder_callback(session_key):
+    """
+    Safely handles folder selection.
+    On Windows: Opens a popup.
+    On Mac/Linux: Shows a warning (prevents crash).
+    """
+    if not HAS_TK:
+        st.warning(f"⚠️ System UI not supported on {SYSTEM_OS}. Please type the folder path manually.")
+        return
+
     try:
         root = tk.Tk()
         root.withdraw()
@@ -151,8 +174,7 @@ with st.sidebar:
             st.image(logo_file, use_container_width=True)
 
     st.markdown("**Developed by Thanh Nguyen, PhD**")
-    # UPDATED LINE BELOW:
-    st.markdown("Powered by **[https://genomessages.com/](https://genomessages.com/)**")
+    st.markdown("Powered by **[Genomessages](https://genomessages.com/)**")
     st.caption("Advanced Bioinformatics Solutions")
 
 # --- 6. MAIN CONTENT ---
@@ -232,7 +254,6 @@ with tab_auto:
     st.markdown("---")
     
     # --- DYNAMIC TARGET SECTION ---
-    # NOTE: We append 'st.session_state.reset_id' to keys to force freshness on reset
     st.markdown("#### 🎯 Target Group (Inclusion)")
     for i, item in enumerate(st.session_state["target_list"]):
         c1, c2, c3 = st.columns([6, 2, 1])
@@ -240,7 +261,6 @@ with tab_auto:
             item["query"] = st.text_input(
                 f"Target Query #{i+1}", 
                 value=item["query"], 
-                # UNIQUE KEY: index + reset_id
                 key=f"t_q_{i}_{st.session_state.reset_id}", 
                 placeholder="e.g., Salmonella enterica[Org] AND complete genome"
             )
@@ -250,7 +270,6 @@ with tab_auto:
                 value=item["size"], 
                 min_value=0.0, 
                 step=0.1, 
-                # UNIQUE KEY: index + reset_id
                 key=f"t_s_{i}_{st.session_state.reset_id}",
                 help="Genomes smaller than this will be skipped."
             )
@@ -308,6 +327,7 @@ with tab_auto:
     with col_o2:
         st.write("") 
         st.write("") 
+        # BUTTON WITH SAFETY CALLBACK
         st.button("📂 Browse", key="btn_auto_out", on_click=select_folder_callback, args=("out_dir_val",))
     
     if st.button("🚀 Start Auto Pipeline", type="primary"):

@@ -1,33 +1,38 @@
 #!/bin/bash
-echo "========================================================"
-echo "   🧬 SETTING UP ENVIRONMENT (Linux / macOS)"
-echo "========================================================"
-echo
 
-# 1. Check for Python 3
-if ! command -v python3 &> /dev/null; then
-    echo "[ERROR] Python 3 is not installed."
-    echo "  - macOS: Install from python.org"
-    echo "  - Ubuntu/Debian: Run 'sudo apt install python3 python3-pip'"
-    echo "  - Fedora: Run 'sudo dnf install python3'"
-    exit 1
+echo "========================================================"
+echo "   🧬 SETTING UP ENVIRONMENT (Virtual Environment)"
+echo "========================================================"
+
+# 1. Create a Virtual Environment if it doesn't exist
+if [ ! -d "venv" ]; then
+    echo " [1/4] Creating virtual environment (venv)..."
+    python3 -m venv venv
+else
+    echo " [1/4] Virtual environment already exists."
 fi
 
-echo " [1/3] Upgrading pip..."
-python3 -m pip install --upgrade pip
+# 2. Activate the Virtual Environment
+# This tells the shell to use the 'pip' and 'python' inside the folder
+source venv/bin/activate
 
-echo
-echo " [2/3] Installing libraries (including Turbo Levenshtein)..."
-# Note: On some minimal Linux installs, you might need 'build-essential' 
-# or 'python3-dev' if a pre-compiled wheel isn't available.
-pip3 install -r requirements.txt
+# 3. Upgrade pip inside the venv
+echo " [2/4] Upgrading pip..."
+pip install --upgrade pip
 
-echo
-echo " [3/3] Registering 'rational-design' command..."
-pip3 install -e .
+# 4. Install Dependencies
+echo " [3/4] Installing libraries..."
+if [ -f "requirements.txt" ]; then
+    pip install -r requirements.txt
+else
+    echo " [WARNING] requirements.txt not found!"
+fi
 
-echo
+# 5. Install the package in editable mode
+echo " [4/4] Registering 'rational-design' command..."
+pip install -e .
+
 echo "========================================================"
 echo "   ✅ INSTALLATION COMPLETE!"
-echo "   You can now run './RUN_PIPELINE.sh'"
+echo "   You can now run './RUN_APP_UX.sh'"
 echo "========================================================"

@@ -1,23 +1,29 @@
 #!/bin/bash
 
+# Get the directory where this script is located
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
+
 echo "========================================================"
-echo "🧬 Starting Rational Primer Design (Linux/macOS)..."
+echo " 🧬 Starting Rational Primer Design..."
 echo "========================================================"
 
-# 1. Detect Python Executable (prefer python3, fallback to python)
-if command -v python3 &>/dev/null; then
-    PYTHON_EXE=python3
-else
-    PYTHON_EXE=python
+# 1. Check if venv exists
+if [ ! -d "venv" ]; then
+    echo "❌ Error: Virtual environment not found."
+    echo "   Please run './INSTALL_UX.sh' first."
+    exit 1
 fi
 
-# 2. Check if Streamlit is installed
-if ! $PYTHON_EXE -c "import streamlit" &> /dev/null; then
-    echo "[WARNING] Streamlit not found. Installing..."
-    $PYTHON_EXE -m pip install streamlit
+# 2. Activate the Virtual Environment
+source venv/bin/activate
+
+# 3. Check for Streamlit
+if ! python -c "import streamlit" &> /dev/null; then
+    echo " [WARNING] Streamlit not found in venv. Installing..."
+    pip install streamlit
 fi
 
-# 3. Run the App
-# We use the same flags: Dark Mode + Run via Module
-echo "Launching GUI..."
-$PYTHON_EXE -m streamlit run gui.py --theme.base="dark"
+# 4. Run the App
+echo " 🚀 Launching GUI..."
+streamlit run gui.py --server.headless true
