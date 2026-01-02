@@ -1,1 +1,1 @@
-{"t1": ["(((\"Escherichia coli\"[Organism] OR escherichia coli[All Fields]) AND tx[All Fields]) AND complete genome[title]) AND (\"2025/01/01\"[MDAT] : \"3000\"[MDAT]) AND (\"5200000\"[SLEN] : \"6000000\"[SLEN])", 4.5]}
+{"t1": ["\"streptococcus suis\"[organism] AND \"complete genome\"[title]", 1.8, 300]}

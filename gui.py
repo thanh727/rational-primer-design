@@ -6,26 +6,26 @@ import subprocess
 import base64
 import platform
 
-# --- 1. APP CONFIG (MUST BE FIRST) ---
+# --- 1. APP CONFIG ---
 st.set_page_config(page_title="Rational Primer Design", page_icon="🧬", layout="wide")
 
-# --- TKINTER SAFETY CHECK (CRITICAL FOR MAC/LINUX) ---
-# macOS crashes if Tkinter runs in a thread (Streamlit).
-# Linux Servers don't have screens.
-# We disable the "Browse" popup for these cases.
+# --- TKINTER SAFETY CHECK ---
+# Windows & Linux: Enable Browse Button (Try to import Tkinter)
+# macOS (Darwin): Disable Browse Button (It crashes Streamlit)
 SYSTEM_OS = platform.system()
 HAS_TK = False
 
-if SYSTEM_OS == "Windows":
+if SYSTEM_OS == "Darwin":
+    # macOS: Force Disable to prevent crash
+    HAS_TK = False
+else:
+    # Windows & Linux: Try to enable
     try:
         import tkinter as tk
         from tkinter import filedialog
         HAS_TK = True
     except ImportError:
         HAS_TK = False
-else:
-    # On macOS ("Darwin") and Linux, we forcibly disable Tkinter to prevent crashes
-    HAS_TK = False
 
 # --- 2. INITIALIZE SESSION STATE ---
 if "reset_id" not in st.session_state: st.session_state["reset_id"] = 0 
@@ -39,27 +39,21 @@ if "auto_proj_val" not in st.session_state: st.session_state["auto_proj_val"] = 
 if "local_proj_val" not in st.session_state: st.session_state["local_proj_val"] = "Local_Run_01"
 
 if "target_list" not in st.session_state:
-    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
+    st.session_state["target_list"] = [{"query": "", "size": 0.0, "count": 50}]
 if "bg_list" not in st.session_state:
-    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
+    st.session_state["bg_list"] = [{"query": "", "size": 0.0, "count": 100}]
 
 # --- 3. HELPER FUNCTIONS ---
 
 def reset_app():
-    """
-    Resets the app by clearing fields and incrementing the Reset ID.
-    Changing the ID forces Streamlit to re-create the dynamic widgets fresh.
-    """
     st.session_state["path_t_val"] = ""
     st.session_state["path_b_val"] = ""
     st.session_state["l_out_val"] = os.path.join(os.getcwd(), "results_local")
     st.session_state["out_dir_val"] = "results_auto"
     st.session_state["auto_proj_val"] = "Auto_Run_01"
     st.session_state["local_proj_val"] = "Local_Run_01"
-    
-    st.session_state["target_list"] = [{"query": "", "size": 0.0}]
-    st.session_state["bg_list"] = [{"query": "", "size": 0.0}]
-    
+    st.session_state["target_list"] = [{"query": "", "size": 0.0, "count": 50}]
+    st.session_state["bg_list"] = [{"query": "", "size": 0.0, "count": 100}]
     st.session_state["reset_id"] += 1
 
 def get_clickable_image_html(image_path, target_url):
@@ -72,15 +66,8 @@ def get_clickable_image_html(image_path, target_url):
         return None
 
 def select_folder_callback(session_key):
-    """
-    Safely handles folder selection.
-    On Windows: Opens a popup.
-    On Mac/Linux: Shows a warning (prevents crash).
-    """
     if not HAS_TK:
-        st.warning(f"⚠️ System UI not supported on {SYSTEM_OS}. Please type the folder path manually.")
         return
-
     try:
         root = tk.Tk()
         root.withdraw()
@@ -99,15 +86,12 @@ st.markdown("""
     #MainMenu {visibility: hidden;}
     footer {visibility: hidden;}
     .stDeployButton {display:none;}
-    
     .stButton button { margin-top: 0px; }
-    
     div.stCode > div > pre {
         max-height: 500px;
         overflow-y: auto !important;
         white-space: pre-wrap !important;
     }
-
     button[data-baseweb="tab"] div p {
         font-size: 1.2rem !important; 
         font-weight: 700 !important;
@@ -150,7 +134,7 @@ with st.sidebar:
 
     with st.expander("💻 System & Sampling", expanded=False):
         cpu = st.number_input("CPU Cores (0=Auto)", value=0)
-        st.markdown("**Sampling Sizes (0 = Use All)**")
+        st.markdown("**Validation Sampling (0 = Use All)**")
         samp_dt = st.number_input("Design Target", value=0)
         samp_db = st.number_input("Design Background", value=100)
         samp_vt = st.number_input("Validate Target", value=0)
@@ -174,7 +158,7 @@ with st.sidebar:
             st.image(logo_file, use_container_width=True)
 
     st.markdown("**Developed by Thanh Nguyen, PhD**")
-    st.markdown("Powered by **[Genomessages](https://genomessages.com/)**")
+    st.markdown("Powered by **[https://genomessages.com](https://genomessages.com/)**")
     st.caption("Advanced Bioinformatics Solutions")
 
 # --- 6. MAIN CONTENT ---
@@ -256,13 +240,13 @@ with tab_auto:
     # --- DYNAMIC TARGET SECTION ---
     st.markdown("#### 🎯 Target Group (Inclusion)")
     for i, item in enumerate(st.session_state["target_list"]):
-        c1, c2, c3 = st.columns([6, 2, 1])
+        c1, c2, c3, c4 = st.columns([5, 2, 2, 1])
         with c1:
             item["query"] = st.text_input(
                 f"Target Query #{i+1}", 
                 value=item["query"], 
                 key=f"t_q_{i}_{st.session_state.reset_id}", 
-                placeholder="e.g., Salmonella enterica[Org] AND complete genome"
+                placeholder="e.g., Salmonella enterica[Org]..."
             )
         with c2:
             item["size"] = st.number_input(
@@ -270,19 +254,27 @@ with tab_auto:
                 value=item["size"], 
                 min_value=0.0, 
                 step=0.1, 
-                key=f"t_s_{i}_{st.session_state.reset_id}",
-                help="Genomes smaller than this will be skipped."
+                key=f"t_s_{i}_{st.session_state.reset_id}"
             )
+        # Count Column
         with c3:
-            st.write("") 
-            st.write("")
+            item["count"] = st.number_input(
+                f"Max Count #{i+1}", 
+                value=item.get("count", 50), 
+                min_value=0, 
+                step=1,
+                key=f"t_c_{i}_{st.session_state.reset_id}",
+                help="0 = Download All. 50 = Random 50."
+            )
+        with c4:
+            st.write(""); st.write("")
             if i > 0: 
                 if st.button("❌", key=f"del_t_{i}_{st.session_state.reset_id}"):
                     st.session_state["target_list"].pop(i)
                     st.rerun()
 
     if st.button("➕ Add Target Search", key="add_t"):
-        st.session_state["target_list"].append({"query": "", "size": 0.0})
+        st.session_state["target_list"].append({"query": "", "size": 0.0, "count": 50})
         st.rerun()
 
     st.markdown("---")
@@ -290,13 +282,13 @@ with tab_auto:
     # --- DYNAMIC BACKGROUND SECTION ---
     st.markdown("#### 🛡️ Background Group (Exclusion)")
     for i, item in enumerate(st.session_state["bg_list"]):
-        c1, c2, c3 = st.columns([6, 2, 1])
+        c1, c2, c3, c4 = st.columns([5, 2, 2, 1])
         with c1:
             item["query"] = st.text_input(
                 f"Background Query #{i+1}", 
                 value=item["query"], 
                 key=f"b_q_{i}_{st.session_state.reset_id}", 
-                placeholder="e.g., Escherichia coli[Org] AND complete genome"
+                placeholder="e.g., Escherichia coli[Org]..."
             )
         with c2:
             item["size"] = st.number_input(
@@ -306,16 +298,25 @@ with tab_auto:
                 step=0.1, 
                 key=f"b_s_{i}_{st.session_state.reset_id}"
             )
+        # Count Column
         with c3:
-            st.write("")
-            st.write("")
+            item["count"] = st.number_input(
+                f"Max Count #{i+1}", 
+                value=item.get("count", 100), 
+                min_value=0, 
+                step=1,
+                key=f"b_c_{i}_{st.session_state.reset_id}",
+                help="0 = Download All."
+            )
+        with c4:
+            st.write(""); st.write("")
             if i > 0:
                 if st.button("❌", key=f"del_b_{i}_{st.session_state.reset_id}"):
                     st.session_state["bg_list"].pop(i)
                     st.rerun()
 
     if st.button("➕ Add Background Search", key="add_b"):
-        st.session_state["bg_list"].append({"query": "", "size": 0.0})
+        st.session_state["bg_list"].append({"query": "", "size": 0.0, "count": 100})
         st.rerun()
     
     st.markdown("---")
@@ -327,8 +328,10 @@ with tab_auto:
     with col_o2:
         st.write("") 
         st.write("") 
-        # BUTTON WITH SAFETY CALLBACK
-        st.button("📂 Browse", key="btn_auto_out", on_click=select_folder_callback, args=("out_dir_val",))
+        if HAS_TK:
+            st.button("📂 Browse", key="btn_auto_out", on_click=select_folder_callback, args=("out_dir_val",))
+        else:
+            st.empty() 
     
     if st.button("🚀 Start Auto Pipeline", type="primary"):
         t_valid = [x for x in st.session_state["target_list"] if x["query"].strip()]
@@ -345,11 +348,12 @@ with tab_auto:
             
             t_conf = {}
             for idx, item in enumerate(t_valid):
-                t_conf[f"t{idx+1}"] = [item["query"], item["size"]]
+                # Pass 3 items now: [Query, Size, Count]
+                t_conf[f"t{idx+1}"] = [item["query"], item["size"], item["count"]]
             
             b_conf = {}
             for idx, item in enumerate(b_valid):
-                b_conf[f"b{idx+1}"] = [item["query"], item["size"]]
+                b_conf[f"b{idx+1}"] = [item["query"], item["size"], item["count"]]
             
             os.makedirs("config", exist_ok=True)
             with open("config/t_conf.json", "w") as f: json.dump(t_conf, f)
@@ -367,7 +371,10 @@ with tab_auto:
 # --- TAB 2: LOCAL MODE ---
 with tab_local:
     st.subheader("Use Local FASTA Files")
-    st.info("💡 Click 'Browse' to select folders. The path will appear automatically.")
+    if HAS_TK:
+        st.info("💡 Click 'Browse' to select folders.")
+    else:
+        st.info("💡 **Mac Users:** You can drag & drop the folder into the box below (if supported) or copy the path.")
     
     l_proj = st.text_input("Local Project Name", key="local_proj_val")
     
@@ -377,7 +384,8 @@ with tab_local:
     with col_t2:
         st.write("") 
         st.write("") 
-        st.button("📂 Browse", key="btn_t", on_click=select_folder_callback, args=("path_t_val",))
+        if HAS_TK:
+            st.button("📂 Browse", key="btn_t", on_click=select_folder_callback, args=("path_t_val",))
 
     col_b1, col_b2 = st.columns([4, 1])
     with col_b1:
@@ -385,7 +393,8 @@ with tab_local:
     with col_b2:
         st.write("") 
         st.write("") 
-        st.button("📂 Browse", key="btn_b", on_click=select_folder_callback, args=("path_b_val",))
+        if HAS_TK:
+            st.button("📂 Browse", key="btn_b", on_click=select_folder_callback, args=("path_b_val",))
     
     col_o1, col_o2 = st.columns([4, 1])
     with col_o1:
@@ -393,7 +402,8 @@ with tab_local:
     with col_o2:
         st.write("") 
         st.write("") 
-        st.button("📂 Browse", key="btn_o", on_click=select_folder_callback, args=("l_out_val",))
+        if HAS_TK:
+            st.button("📂 Browse", key="btn_o", on_click=select_folder_callback, args=("l_out_val",))
     
     st.divider()
 

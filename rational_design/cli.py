@@ -27,8 +27,19 @@ def load_json(path):
     with open(path) as f: return json.load(f)
 
 def load_config_for_fetcher(json_path):
+    """
+    Parses JSON config for the fetcher.
+    Returns: {key: (Query, SizeMB, MaxCount)}
+    """
     data = load_json(json_path)
-    return {k: (v[0], v[1]) for k, v in data.items()}
+    parsed = {}
+    for k, v in data.items():
+        query = v[0]
+        size = v[1]
+        # Check if "count" exists (older config files might not have it)
+        count = v[2] if len(v) > 2 else 0
+        parsed[k] = (query, size, count)
+    return parsed
 
 def format_duration(seconds):
     m, s = divmod(int(seconds), 60)
@@ -139,25 +150,13 @@ def run_full_pipeline(args):
     timing_log.append(("Dataset Construction", time.time() - t0))
 
     # ==========================================
-    # AUTO-OPTIMIZATION LOOP (SMART STRATEGY)
+    # AUTO-OPTIMIZATION LOOP
     # ==========================================
-    # Updated Logic: If the strict run fails, we assume Conservation is the bottleneck.
-    # We drop Conservation immediately in Cycle 2 instead of just increasing candidates.
     strategies = [
-        # 1. Gold Standard: Strict (95%), Top 10.
         {"candidates": 10,  "relax_cons": 0.00, "relax_sens": 0.0}, 
-        
-        # 2. Relaxed Cons: Drop to 90%, but check more (Top 30).
-        #    We skip the "50 candidates at 95%" step because if 10 didn't work, 50 likely won't either.
         {"candidates": 30,  "relax_cons": 0.05, "relax_sens": 0.0}, 
-        
-        # 3. Balanced Relax: 90% Cons, 90% Sens (Probe often fails sens). Top 50.
         {"candidates": 50,  "relax_cons": 0.05, "relax_sens": 5.0}, 
-        
-        # 4. Aggressive Relax: 85% Cons, 90% Sens. Top 100.
         {"candidates": 100, "relax_cons": 0.10, "relax_sens": 5.0}, 
-        
-        # 5. Last Resort: 80% Cons, 85% Sens. Top 100.
         {"candidates": 100, "relax_cons": 0.15, "relax_sens": 10.0} 
     ]
     
@@ -251,7 +250,7 @@ def main():
     cmd_pipe = subparsers.add_parser("pipeline")
     cmd_pipe.add_argument("--out", required=True)
     cmd_pipe.add_argument("--params")
-    cmd_pipe.add_argument("--seed", type=int, default=42, help="Random seed for reproducibility")
+    cmd_pipe.add_argument("--seed", type=int, default=42)
     cmd_pipe.add_argument("--target_config")
     cmd_pipe.add_argument("--bg_config")
     cmd_pipe.add_argument("--email")
