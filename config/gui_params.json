@@ -1,0 +1,16 @@
+{
+    "min_sensitivity": 95.0,
+    "design_min_conservation": 0.9,
+    "validation_max_cross_reactivity": 5.0,
+    "product_size_min": 100,
+    "product_size_max": 350,
+    "primer_length": 20,
+    "max_mismatch": 2,
+    "cpu_cores": 30,
+    "design_target_sampling_size": 50,
+    "design_background_sampling_size": 10,
+    "validation_target_sampling_size": 0,
+    "validation_background_sampling_size": 0,
+    "design_max_candidates": 50,
+    "enable_blast": true
+}
