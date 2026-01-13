@@ -1,5 +1,1 @@
-<<<<<<< HEAD
-{"t1": ["\"streptococcus suis\"[organism] AND \"complete genome\"[title]", 1.8, 100]}
-=======
-{"t1": ["\"Bacillus cereus\"[organism] AND \"complete genome\"[title]", 4.2, 20]}
->>>>>>> 54cb053850c99b4e448af9ea5f09b31a5e257d93
+{"t1": ["\"Bacillus cereus\"[Organism] AND \"complete genome\"[title]", 4.9, 20], "t2": ["\"Bacillus licheniformis\"[Organism] AND \"complete genome\"[title]", 4.2, 20], "t3": ["\"Bacillus subtilis\"[Organism] AND \"complete genome\"[title]", 4.2, 20], "t4": ["\"Bacillus pumilus\"[Organism] AND \"complete genome\"[title]", 3.6, 20], "t5": ["\"Bacillus amyloliquefaciens\"[Organism] AND \"complete genome\"[title]", 3.9, 20]}
