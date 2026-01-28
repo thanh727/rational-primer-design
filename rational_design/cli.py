@@ -27,16 +27,11 @@ def load_json(path):
     with open(path) as f: return json.load(f)
 
 def load_config_for_fetcher(json_path):
-    """
-    Parses JSON config for the fetcher.
-    Returns: {key: (Query, SizeMB, MaxCount)}
-    """
     data = load_json(json_path)
     parsed = {}
     for k, v in data.items():
         query = v[0]
         size = v[1]
-        # Check if "count" exists (older config files might not have it)
         count = v[2] if len(v) > 2 else 0
         parsed[k] = (query, size, count)
     return parsed
@@ -52,7 +47,7 @@ def run_full_pipeline(args):
     if hasattr(args, 'seed'):
         random.seed(args.seed)
     else:
-        random.seed(42) # Default Deterministic
+        random.seed(42) 
     
     pipeline_start = time.time()
     timing_log = []
@@ -67,7 +62,6 @@ def run_full_pipeline(args):
     print(f"========================================================")
     print(f"   🧬 RATIONAL DESIGN LOG START")
     print(f"   🕒 Time: {datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    print(f"   🎲 Seed: {args.seed if hasattr(args,'seed') else 42}")
     print(f"   📂 Project: {base_dir.resolve()}")
     print(f"========================================================")
 
@@ -77,7 +71,7 @@ def run_full_pipeline(args):
         "design_background_sampling_size": 100,
         "validation_target_sampling_size": 0,
         "validation_background_sampling_size": 200,
-        "design_max_candidates": 10,
+        "design_max_candidates": 50, # Will be overwritten by config/slider
         "cpu_cores": 0,
         "primer_length": 20, "primer_opt_tm": 60.0, "primer_gc_min": 20.0, "primer_gc_max": 80.0,
         "probe_tm_plus": 10.0, "product_size_min": 100, "product_size_max": 350,
@@ -150,14 +144,22 @@ def run_full_pipeline(args):
     timing_log.append(("Dataset Construction", time.time() - t0))
 
     # ==========================================
-    # AUTO-OPTIMIZATION LOOP
+    # AUTO-OPTIMIZATION LOOP (DYNAMIC)
     # ==========================================
+    # 1. Read User's Slider Value
+    user_max_cand = int(base_params.get("design_max_candidates", 2000))
+    print(f"\n[INFO] User selected Max Candidates: {user_max_cand}")
+
+    # 2. Build Strategies dynamically based on User Input
+    # Cycle 1: Strict Settings, User's Candidate Count
+    # Cycle 2+: Relax Conservation, Increase Candidates slightly (if possible)
+    
     strategies = [
-        {"candidates": 10,  "relax_cons": 0.00, "relax_sens": 0.0}, 
-        {"candidates": 30,  "relax_cons": 0.05, "relax_sens": 0.0}, 
-        {"candidates": 50,  "relax_cons": 0.05, "relax_sens": 5.0}, 
-        {"candidates": 100, "relax_cons": 0.10, "relax_sens": 5.0}, 
-        {"candidates": 100, "relax_cons": 0.15, "relax_sens": 10.0} 
+        {"candidates": user_max_cand, "relax_cons": 0.00, "relax_sens": 0.0},
+        {"candidates": int(user_max_cand * 1.5), "relax_cons": 0.05, "relax_sens": 0.0},
+        {"candidates": int(user_max_cand * 2.0), "relax_cons": 0.10, "relax_sens": 5.0},
+        {"candidates": int(user_max_cand * 2.0), "relax_cons": 0.15, "relax_sens": 5.0},
+        {"candidates": int(user_max_cand * 3.0), "relax_cons": 0.20, "relax_sens": 10.0}
     ]
     
     success = False
@@ -170,6 +172,9 @@ def run_full_pipeline(args):
         current_params['design_min_conservation'] -= strat['relax_cons']
         current_params['min_sensitivity'] -= strat['relax_sens']
         
+        # Ensure we don't go below 0 or above reasonable limits
+        if current_params['design_min_conservation'] < 0.5: current_params['design_min_conservation'] = 0.5
+
         print(f"\n" + "━"*60)
         print(f"   🔄 CYCLE {attempt_num}/{len(strategies)}: Testing Top {strat['candidates']} Candidates")
         print(f"   🎯 Specs: Cons >={current_params['design_min_conservation']*100:.0f}% | Sens >={current_params['min_sensitivity']:.0f}%")
@@ -227,14 +232,10 @@ def run_full_pipeline(args):
             print("   ⚠️ No valid probes found. Expanding search...")
             continue
 
-    # ==========================================
-    # FINALIZATION
-    # ==========================================
     if success:
         if current_params.get("enable_blast", True):
             print("\n--- [STAGE 5] BLAST ANNOTATION ---")
             prober.run_blast_annotation(str(path_final_assay))
-        
         print(f"\n✅✅✅ PIPELINE COMPLETE! Output: {path_final_assay}")
     else:
         print("\n❌ FAILED after all attempts.")

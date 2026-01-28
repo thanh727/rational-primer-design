@@ -1,16 +1,20 @@
 {
+    "target_mode": "rna",
     "min_sensitivity": 95.0,
     "design_min_conservation": 0.9,
+    "primer_tm_min": 50.0,
+    "primer_tm_max": 64.0,
+    "primer_opt_tm": 57.0,
     "validation_max_cross_reactivity": 5.0,
-    "product_size_min": 100,
-    "product_size_max": 350,
+    "product_size_min": 80,
+    "product_size_max": 150,
     "primer_length": 20,
     "max_mismatch": 2,
-    "cpu_cores": 30,
+    "cpu_cores": 0,
     "design_target_sampling_size": 0,
-    "design_background_sampling_size": 100,
-    "validation_target_sampling_size": 10,
+    "design_background_sampling_size": 0,
+    "validation_target_sampling_size": 0,
     "validation_background_sampling_size": 0,
-    "design_max_candidates": 50,
-    "enable_blast": false
+    "design_max_candidates": 10,
+    "enable_blast": true
 }

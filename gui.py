@@ -114,6 +114,14 @@ with st.sidebar:
     st.divider()
     st.header("⚙️ Advanced Configuration")
     
+    # --- TARGET MODE SELECTOR ---
+    st.subheader("Target Biology")
+    target_mode = st.radio(
+        "Genomic Structure:",
+        ("dsDNA (Bacteria/Euk)", "ssRNA (Viruses)"),
+        help="dsDNA: Checks if Primer Sequence is in genome (Standard). ssRNA: Checks if Binding Site is in genome (Viral)."
+    )
+    
     st.subheader("Workflow Options")
     use_blast = st.checkbox("Enable Target Gene Annotation (BLAST)", value=True, 
                             help="If checked, the pipeline will blast candidates against the database to find gene names.")
@@ -122,6 +130,15 @@ with st.sidebar:
     with st.expander("🧬 Biological Parameters", expanded=True):
         min_sens = st.slider("Min Sensitivity (%)", 50.0, 100.0, 95.0, 0.1)
         min_cons = st.slider("Min Conservation (0-1)", 0.5, 1.0, 0.90, 0.01)
+        
+        # Tm Range
+        primer_tm_range = st.slider(
+            "Primer Melting Temp (°C)", 
+            min_value=40.0, max_value=75.0, value=(50.0, 64.0), step=0.5,
+            help="Select the minimum and maximum melting temperature for primers."
+        )
+        tm_min, tm_max = primer_tm_range
+
         max_xr = st.slider("Max Cross-Reactivity (%)", 0.0, 100.0, 5.0, 0.1)
         
         c1, c2 = st.columns(2)
@@ -133,6 +150,17 @@ with st.sidebar:
         max_mm = c4.number_input("Max Mismatches", value=2)
 
     with st.expander("💻 System & Sampling", expanded=False):
+        # --- MODIFIED: MAX CANDIDATES SLIDER ---
+        max_cand = st.slider(
+            "Max Candidates to Test", 
+            min_value=10, 
+            max_value=2000, 
+            value=500, 
+            step=10,
+            help="Higher values bridge larger gaps (good for viruses) but are slower. Lower values are faster (good for bacteria)."
+        )
+        # ---------------------------------------
+        
         cpu = st.number_input("CPU Cores (0=Auto)", value=0)
         st.markdown("**Validation Sampling (0 = Use All)**")
         samp_dt = st.number_input("Design Target", value=0)
@@ -205,9 +233,16 @@ def run_pipeline(cmd):
         st.error("❌ Pipeline Failed. Check the logs above.")
 
 def save_params():
+    # Convert UI selection to code param
+    t_mode_code = "rna" if "ssRNA" in target_mode else "dna"
+    
     params = {
+        "target_mode": t_mode_code,
         "min_sensitivity": min_sens,
         "design_min_conservation": min_cons,
+        "primer_tm_min": tm_min,
+        "primer_tm_max": tm_max,
+        "primer_opt_tm": (tm_min + tm_max) / 2,
         "validation_max_cross_reactivity": max_xr,
         "product_size_min": prod_min,
         "product_size_max": prod_max,
@@ -218,7 +253,7 @@ def save_params():
         "design_background_sampling_size": samp_db,
         "validation_target_sampling_size": samp_vt,
         "validation_background_sampling_size": samp_vb,
-        "design_max_candidates": 50,
+        "design_max_candidates": max_cand, # <--- CONTROLLED BY SLIDER
         "enable_blast": use_blast
     }
     os.makedirs("config", exist_ok=True)
