@@ -1,1 +1,1 @@
-{"t1": ["\"Nipah virus\"[Organism] AND \"complete genome\"", 0.01, 500]}
+{"t1": ["\"Streptococcus suis\"[org] AND \"complete genome\"[title]", 1.7, 1000]}
