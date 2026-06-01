@@ -9,22 +9,22 @@ Rational Primer Design is a scalable, parallelized bioinformatics framework for 
 
 ## 🚀 Key Features
 
-- **Automated Primer & Probe Design**  
+- **Automated Primer & Probe Design**
   Identification of conserved genomic regions using a fast **2‑bit integer encoding** strategy for scalable and memory‑efficient sequence comparison.
 
-- **In‑silico PCR Validation**  
+- **In‑silico PCR Validation**
   High‑throughput screening of candidate assays against hundreds to thousands of background genomes using a *Turbo Pigeonhole*–based mismatch pruning algorithm.
 
-- **High‑Performance Parallelization**  
+- **High‑Performance Parallelization**
   Efficient utilization of all available CPU cores to accelerate candidate generation, filtering, and validation.
 
-- **Adaptive Constraint Relaxation**  
-  Automatic relaxation of biological constraints when no valid primer–probe sets are identified under strict parameter regimes.
+- **Optional Constraint Relaxation**
+  Constraint relaxation is available only when explicitly enabled, so user-provided sensitivity and conservation thresholds are not silently weakened.
 
-- **Deterministic & Reproducible**  
+- **Deterministic & Reproducible**
   Deterministic sampling and execution guarantee identical results across repeated runs given identical inputs.
 
-- **Cross‑Platform Support**  
+- **Cross‑Platform Support**
   Native execution on **Windows**, **macOS**, and **Linux** systems.
 
 ---
@@ -35,7 +35,7 @@ Rational Primer Design is a scalable, parallelized bioinformatics framework for 
 
 Run the complete application directly in your browser using the provided **Google Colab notebook**. This option requires **no local installation** and is recommended for evaluation or rapid prototyping.
 
-[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/thanh727/rational-primer-design/blob/main/Application_primer_design.ipynb)
+[![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/github/thanh727/rational-primer-design/blob/main/notebooks/Application_primer_design.ipynb)
 
 ---
 
@@ -81,6 +81,42 @@ chmod +x INSTALL_UX.sh RUN_APP_UX.sh
 
 ## 🏃‍♂️ Running the Pipeline
 
+### 🌐 Web App (Next.js + FastAPI)
+
+The modern web interface runs the Python pipeline through a FastAPI backend and a Next.js frontend.
+
+```bash
+./scripts/RUN_WEB_APP.sh
+```
+
+Open:
+```text
+http://127.0.0.1:3000
+```
+
+To run the two services separately:
+```bash
+./scripts/RUN_API.sh
+./scripts/RUN_WEB_FRONTEND.sh
+```
+
+Default endpoints:
+- FastAPI: `http://127.0.0.1:8000`
+- Next.js: `http://127.0.0.1:3000`
+
+The web app keeps the original workflow architecture:
+- `/dashboard`: recent web jobs, legacy Streamlit history, live logs, and result files.
+- `/design/local`: local design from existing FASTA files or folders.
+- `/design/auto`: automatic NCBI design from target/background keywords.
+- `/ai`: AI Expert chat mode with runnable `propose_design`, `propose_local_design`, `propose_validation`, and `propose_multiplex` proposals.
+- `/validate`: known-primer in-silico PCR validation from local folders or NCBI keywords.
+- `/multiplex`: local multiplex, automatic NCBI multiplex, and analysis of existing completed target folders.
+- Vietnamese and English UI labels.
+
+The website layout uses a traditional top navigation bar for primary functions and a left shared-configuration sidebar for language, run name, NCBI email, AI backend, assay type, and core design parameters. The AI Expert chat keeps the legacy PCR/qPCR expert prompt: it can design assays, validate known primers, configure multiplex runs, interpret results, and provide wet-lab optimization or troubleshooting advice without forcing a runnable JSON proposal unless the user asks to run a pipeline.
+
+---
+
 ### 🖥️ Desktop (GUI Mode)
 
 #### 🪟 Windows
@@ -124,7 +160,7 @@ Prepare two configuration files:
 
 **Run the pipeline:**
 ```bash
-./RUN_CLI.sh pipeline   --out "results_auto_test"   --email "your_email@example.com"   --target_config "targets.json"   --bg_config "background.json"
+./scripts/RUN_CLI.sh pipeline   --out "results_auto_test"   --email "your_email@example.com"   --target_config "targets.json"   --bg_config "background.json"
 ```
 
 > An email address is required by NCBI for genome downloads.
@@ -136,11 +172,11 @@ Prepare two configuration files:
 **Recommended for:** Running on existing genome collections (e.g. servers or HPC clusters).
 
 ```bash
-./RUN_CLI.sh pipeline   --out "results_local_test"   --local_target "path/to/target_genomes_folder"   --local_bg "path/to/background_genomes_folder"
+./scripts/RUN_CLI.sh pipeline   --out "results_local_test"   --local_target "path/to/target_genomes_folder"   --local_bg "path/to/background_genomes_folder"
 ```
 
-**Optional:**  
-If a default configuration file (`config/parameters.json`) exists, no additional arguments are required.  
+**Optional:**
+If a default configuration file (`config/parameters.json`) exists, no additional arguments are required.
 To use custom settings:
 ```bash
 --params "my_custom_settings.json"
@@ -157,22 +193,26 @@ All biological and computational parameters are configured interactively via the
 | design_target_sampling_size | 0 | Number of target genomes used for design (0 = all genomes; maximum accuracy). |
 | design_max_candidates | 10 | Number of primer–probe sets evaluated per design cycle. |
 | min_sensitivity | 90.0 | Minimum percentage of target genomes detected. |
-| primer_length | 20 | Primer length (bp). |
+| primer_length_min / primer_length_max | 18 / 22 | Primer length search range (bp). |
 | product_size_min | 100 | Minimum amplicon size (bp). |
 | product_size_max | 400 | Maximum amplicon size (bp). |
-| enable_blast | true | Annotate amplicons using NCBI BLAST (requires internet connection). |
+| enable_blast | false | Annotate amplicons using NCBI BLAST when explicitly enabled (requires internet connection). |
+| auto_relax_constraints | false | If true, retries with lower conservation/sensitivity thresholds after strict attempts fail. |
 
 ---
 
 ## 🛠 System Requirements
 
-- **Python ≥ 3.9**  
+- **Python ≥ 3.9**
   Must be installed and accessible via the system `PATH`.
 
-- **Internet connection (optional)**  
+- **Node.js ≥ 20**
+  Required for the Next.js frontend.
+
+- **Internet connection (optional)**
   Required only for genome downloading and BLAST‑based annotation.
 
-- **Hardware considerations**  
+- **Hardware considerations**
   On a standard desktop or laptop equipped with:
   - **16 GB RAM**
   - **Intel Core i5‑9400 processor or equivalent**

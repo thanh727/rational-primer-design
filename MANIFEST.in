@@ -1,5 +1,23 @@
-include config/*.json
+include config/background.json
+include config/b_conf.json
+include config/b_conf_shared.json
+include config/gui_params.json
+include config/parameters.json
+include config/target.json
+include config/t_conf.json
+include config/t_conf_target1.json
+include config/t_conf_target2.json
+include config/t_conf_target3.json
+include config/t_conf_target4.json
 include database/target/.gitkeep
 include database/background/.gitkeep
 include README.md
 include requirements.txt
+recursive-include docs *.md
+include frontend/package.json
+include frontend/package-lock.json
+include frontend/next.config.mjs
+include frontend/tsconfig.json
+include frontend/next-env.d.ts
+recursive-include frontend/app *.tsx *.css
+recursive-include frontend/components *.tsx

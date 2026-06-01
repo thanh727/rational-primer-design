@@ -1,79 +1,69 @@
-import os
-import shutil
 import random
 from pathlib import Path
 from Bio import SeqIO
 
 class LibraryConstructor:
-    def __init__(self):
-        pass
-
     def construct(self, raw_target_dir, raw_bg_dir, output_paths, counts):
-        print("==========================================")
-        print("🧬 PHASE 1: GENERATING DATASETS")
-        print("   (Validation data now includes Design data)")
-        print("==========================================")
+        print("--- [STAGE 1] BUILDING DATASETS (Strain-based) ---")
+        for p in output_paths.values(): Path(p).parent.mkdir(parents=True, exist_ok=True)
 
-        for p in output_paths.values():
-            Path(p).parent.mkdir(parents=True, exist_ok=True)
+        self._process_category("design", raw_target_dir, output_paths["design_target"], counts["design_target"])
+        self._process_category("design", raw_bg_dir, output_paths["design_background"], counts["design_background"])
+        self._process_category("validation", raw_target_dir, output_paths["validation_target"], counts["validation_target"])
+        self._process_category("validation", raw_bg_dir, output_paths["validation_background"], counts["validation_background"])
 
-        self._process_category("design", raw_target_dir, output_paths["design_target"], counts["design_target"], {})
-        self._process_category("design", raw_bg_dir, output_paths["design_background"], counts["design_background"], {})
-
-        print("\n==========================================")
-        print("🧪 PHASE 2: GENERATING VALIDATION DATASETS")
-        print("==========================================")
-        
-        self._process_category("validation", raw_target_dir, output_paths["validation_target"], counts["validation_target"], {})
-        self._process_category("validation", raw_bg_dir, output_paths["validation_background"], counts["validation_background"], {})
-
-        print("\n✨ Library Construction Complete.")
-
-    def _process_category(self, stage_name, input_dir, output_file, n_sample, exclude_indices):
-        print(f"\n📂 Processing Folder: {Path(input_dir).name}")
-        print(f"   ➡ {stage_name.capitalize()} Output: {Path(output_file).name}")
-        print(f"   ➡ Request: {n_sample if n_sample > 0 else 'ALL'} seqs/file")
-
-        input_path = Path(input_dir)
-        if not input_path.exists():
-            print(f"❌ Error: Directory not found: {input_path}")
-            return {}
-
-        all_records = []
-        new_usage = {}
-        files = list(input_path.glob("*.fasta")) + list(input_path.glob("*.fa"))
-        
-        for fasta_file in files:
-            try:
-                recs = list(SeqIO.parse(fasta_file, "fasta"))
-                total_in_file = len(recs)
-                available_indices = list(range(total_in_file))
-                
-                if n_sample <= 0 or n_sample >= len(available_indices):
-                    chosen_indices = available_indices
-                    msg = f"All {len(chosen_indices)}"
-                else:
-                    chosen_indices = random.sample(available_indices, n_sample)
-                    msg = f"Sampled {n_sample}/{len(available_indices)}"
-
-                for idx in chosen_indices:
-                    r = recs[idx]
-                    r.id = f"{r.id}|{fasta_file.stem}" 
-                    r.description = ""
-                    all_records.append(r)
-                
-                new_usage[fasta_file.name] = set(chosen_indices)
-                print(f"   ✔ {fasta_file.name}: {msg}")
-
-            except Exception as e:
-                print(f"   ⚠️ Skipping {fasta_file.name}: {e}")
-
-        if all_records:
-            with open(output_file, "w") as f:
-                SeqIO.write(all_records, f, "fasta")
-            print(f"   ✅ Written {len(all_records)} total sequences to {Path(output_file).name}")
-        else:
-            print(f"   ⚠️ No sequences found for {stage_name}.")
+    def _process_category(self, stage, input_dir, output_file, n_strains):
+        path = Path(input_dir)
+        if not path.exists():
             with open(output_file, "w") as f: pass
+            return
 
-        return new_usage
+        exts = ["*.fasta", "*.fa", "*.fna", "*.fas", "*.FNA", "*.FA", "*.FAS"]
+        all_files = []
+        if path.is_file():
+            all_files = [path]
+        else:
+            for e in exts:
+                all_files.extend(list(path.glob(e)))
+        all_files = sorted(set(all_files))
+
+        if not all_files:
+            print(f"   ⚠️ No files found in {path.name}")
+            with open(output_file, "w") as f: pass
+            return
+
+        print(f"   ➡ {stage.capitalize()} - {path.name}: Found {len(all_files)} files.")
+
+        # Group files by name_key (e.g. t1, b1)
+        groups = {}
+        for f in all_files:
+            name_key = f.stem.rsplit('_', 1)[0] if '_' in f.stem else f.stem
+            groups.setdefault(name_key, []).append(f)
+
+        final_records = []
+        for name_key, files in groups.items():
+            group_records = []
+            for f in files:
+                try:
+                    seqs = list(SeqIO.parse(f, "fasta"))
+                    for r in seqs:
+                        r.id = f"{f.stem}|{r.id}"
+                        group_records.append(r)
+                except Exception as e:
+                    print(f"      ❌ Error parsing {f.name}: {e}")
+                    continue
+
+            if not group_records: continue
+
+            avg_len_mb = sum(len(r.seq) for r in group_records) / len(group_records) / 1_000_000
+            print(f"      ✅ {name_key} (avg {avg_len_mb:.2f} MB): Loaded {len(group_records)} strain record(s).")
+            final_records.extend(group_records)
+
+        limit = max(0, int(n_strains or 0))
+        if limit > 0 and len(final_records) > limit:
+            print(f"      📉 {stage.capitalize()} sampling: {limit} / {len(final_records)} records.")
+            final_records = random.sample(final_records, limit)
+        else:
+            print(f"      📦 {stage.capitalize()} dataset: using all {len(final_records)} records.")
+
+        with open(output_file, "w") as f: SeqIO.write(final_records, f, "fasta")

@@ -2,333 +2,333 @@ import multiprocessing
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqUtils import MeltingTemp as mt
-from collections import defaultdict
-import csv
+from collections import defaultdict, Counter, deque
+import pandas as pd
 import time
-import re
+import gc
+import array
+import os
+import math
 
-# --- GLOBAL SHARED MEMORY ---
+# --- SYSTEM OPTIMIZATION ---
+gc.set_threshold(100, 10, 10)
 WORKER_GENOMES = None
 
-def init_worker(genomes_list):
+def init_worker(genome_tuples):
+    """Initialize shared data for worker processes."""
     global WORKER_GENOMES
-    WORKER_GENOMES = genomes_list
+    WORKER_GENOMES = genome_tuples
 
-TRANS_TABLE = str.maketrans("ACGT", "0123")
-RC_TABLE = str.maketrans("ACGT", "TGCA")
+DNA_MAP = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'a': 0, 'c': 1, 'g': 2, 't': 3}
 
-def get_canonical_2bit(kmer_str):
-    fwd = kmer_str
-    rev = fwd.translate(RC_TABLE)[::-1]
-    target = fwd if fwd < rev else rev
-    try: return int(target.translate(TRANS_TABLE), 4)
-    except ValueError: return -1
 
-def mine_binary_worker(args):
-    seq_indices, k = args
-    global WORKER_GENOMES
-    counts = defaultdict(int)
-    if not WORKER_GENOMES: return counts
-    for idx in seq_indices:
-        seq = WORKER_GENOMES[idx]
-        n = len(seq)
-        if n < k: continue
-        unique_in_genome = set()
-        for i in range(n - k + 1):
-            k_str = seq[i : i+k]
-            val = get_canonical_2bit(k_str)
-            if val != -1: unique_in_genome.add(val)
-        for val in unique_in_genome:
-            counts[val] += 1
-    return counts
-
-def check_bg_binary_worker(args):
-    bg_seqs_chunk, k, candidates_set = args
-    bad_counts = defaultdict(int)
-    for seq in bg_seqs_chunk:
-        n = len(seq)
-        if n < k: continue
-        unique_bg = set()
-        for i in range(n - k + 1):
-            k_str = seq[i : i+k]
-            val = get_canonical_2bit(k_str)
-            if val in candidates_set: unique_bg.add(val)
-        for val in unique_bg: bad_counts[val] += 1
-    return bad_counts
-
-def fast_hamming(s1, s2, max_mm):
-    mm = 0
-    for i in range(len(s1)):
-        if s1[i] != s2[i]:
-            mm += 1
-            if mm > max_mm: return False
-    return True
-
-def find_fuzzy_occurrence(genome_seq, primer, max_mm):
-    n = len(primer)
-    start = 0
-    while True:
-        idx = genome_seq.find(primer[:5], start) 
-        if idx == -1: break
-        sub = genome_seq[idx : idx+n]
-        if len(sub) == n and fast_hamming(sub, primer, max_mm): return True
-        start = idx + 1
+def is_low_complexity_sequence(seq):
+    """Reject short tandem repeats such as ATAT... or ATGCATGC...."""
+    seq = str(seq).upper()
+    if not seq:
+        return True
+    for unit in range(1, min(5, len(seq) // 2 + 1)):
+        if len(seq) % unit == 0 and seq == seq[:unit] * (len(seq) // unit):
+            return True
     return False
 
-def validate_candidate_fuzzy(pair_data):
-    global WORKER_GENOMES
-    if not WORKER_GENOMES: return 0.0
-    fwd = pair_data['Fwd']
-    rev = pair_data['Rev']
-    
-    # Validation Logic uses Fuzzy Search
-    # This works for both DNA and RNA modes because we check:
-    # 1. Does Fwd sequence match the genome? (Matches Sense)
-    # 2. Does Rev Binding Site (Rev-RC) match the genome? (Matches Sense)
-    rev_binding_site = str(Seq(rev).reverse_complement())
-    
-    MAX_MM = 2
-    hits = 0
-    total = len(WORKER_GENOMES)
-    
-    for t_seq in WORKER_GENOMES:
-        if find_fuzzy_occurrence(t_seq, fwd, MAX_MM):
-            if find_fuzzy_occurrence(t_seq, rev_binding_site, MAX_MM):
-                hits += 1
-    return (hits / total) * 100.0
+def is_bio_safe(h, k):
+    """Check PCR primer standards on bit-packed h."""
+    gc_count = 0
+    consecutive = 1
+    last_base = -1
+    temp_h = h
+
+    for i in range(k):
+        base = temp_h & 3
+        if base == 1 or base == 2:
+            gc_count += 1
+        if base == last_base:
+            consecutive += 1
+            if consecutive >= 5: return False
+        else:
+            consecutive = 1
+        last_base = base
+        if i == 0 and (base == 0 or base == 3):
+            return False
+        temp_h >>= 2
+
+    if not (0.4 * k <= gc_count <= 0.65 * k):
+        return False
+    return True
+
+def calculate_entropy(h, k):
+    """Calculate Shannon Entropy."""
+    temp_h = h
+    bases = [0, 0, 0, 0] # A, C, G, T
+    for _ in range(k):
+        bases[temp_h & 3] += 1
+        temp_h >>= 2
+
+    entropy = 0
+    for c in bases:
+        if c > 0:
+            p = c / k
+            entropy -= p * math.log2(p)
+    return entropy
+
+# --- MAIN WORKER: INTRA-STRAIN PAIRING (STRIDE OPTIMIZED) ---
+def intra_strain_pairing_worker(args):
+    """
+    Intra-strain process (Stage 2 - Phase 1):
+    Focuses on counting and collecting valid K-mers, applying per-strain filters.
+    """
+    sid, sequences, k, step, min_copy = args
+    valid_hashes = set()
+    hash_counts = Counter()
+    mask = (1 << (2 * k)) - 1
+    step = max(1, int(step)) # Ensure step is at least 1
+
+    for seq in sequences:
+        seq = seq.upper()
+        n = len(seq)
+
+        # Stride processing
+        for i in range(0, n - k + 1, step):
+            sub = seq[i : i + k]
+
+            h = 0
+            for char in sub:
+                val = DNA_MAP.get(char, -1)
+                if val == -1:
+                    h = -1
+                    break
+                h = (h << 2) | val
+            if h == -1: continue
+            h &= mask
+
+            # Filter valid primers & Per-strain filter
+            if is_bio_safe(h, k) and calculate_entropy(h, k) >= 1.6 and not is_low_complexity_sequence(sub):
+                if min_copy > 1:
+                    hash_counts[h] += 1
+                    if hash_counts[h] >= min_copy:
+                        valid_hashes.add(h)
+                else:
+                    valid_hashes.add(h)
+
+    return array.array('Q', sorted(list(valid_hashes)))
 
 class PrimerDesigner:
     def __init__(self, params):
         self.params = params
-        self.k = int(params.get("primer_length", 20))
-        self.max_candidates = int(params.get("design_max_candidates", 20))
-        self.cpu = int(params.get("cpu_cores", 1))
-        # Default to 'dna' if not specified (Preserves old behavior)
-        self.mode = params.get("target_mode", "dna") 
+        self.k_min = int(params.get("primer_length_min", 18))
+        self.k_max = int(params.get("primer_length_max", 22))
+        self.max_candidates = int(params.get("design_max_candidates", 50))
+        self.min_p = int(params.get("product_size_min", 70))
+        self.max_p = int(params.get("product_size_max", 350))
+        self.cpu = int(params.get("cpu_cores", 0)) or max(1, multiprocessing.cpu_count())
+        # IDT/ThermoFisher-compatible Tm bounds (user-configurable from GUI)
+        self.tm_min = float(params.get("primer_tm_min", 55.0))
+        self.tm_max = float(params.get("primer_tm_max", 68.0))
+        self.tm_delta_max = 3.0  # IDT standard: Fwd/Rev Tm difference <= 3°C
 
-    def design(self, target_fasta, bg_fasta, output_csv):
-        print(f"--- STARTING PRIMER DESIGN (Mode: {self.mode.upper()}) ---")
+    def design(self, target_input, bg_input, output_csv):
+        print(f"--- 🚀 V-EXTREME DESIGNER: Population Genomics Mode ---")
         t_start = time.time()
-        print("   [IO] Loading Target Genomes into RAM...")
-        targets = [str(r.seq).upper() for r in SeqIO.parse(target_fasta, "fasta")]
-        if not targets: return
-        print(f"   [IO] Loaded in {time.time()-t_start:.1f}s")
-        
-        # 2. Mine
-        t0 = time.time()
-        min_prev = self.params.get("design_min_conservation", 0.90)
-        conserved_ints = self._mine_integers(targets, min_prev)
-        print(f"   [Step 1 Time] {time.time()-t0:.1f}s")
-        if not conserved_ints: return
 
-        # 3. Filter
-        t0 = time.time()
-        max_bg = self.params.get("design_max_bg_prevalence", 0.20)
-        valid_ints = self._filter_integers(conserved_ints, bg_fasta, max_bg)
-        print(f"   [Step 2 Time] {time.time()-t0:.1f}s")
-        if not valid_ints: return
+        # Get step from config, default is 3 (3x speedup)
+        k_step = int(self.params.get("kmer_step", 3))
 
-        # 4. Recover
-        t0 = time.time()
-        print("   [Step 3] Converting Integers back to DNA...")
-        valid_seqs = self._recover_sequences(valid_ints, targets)
-        print(f"   [Step 3 Time] {time.time()-t0:.1f}s")
+        target_strains = self._load_fastas(target_input)
+        bg_strains = self._load_fastas(bg_input)
 
-        # 5. Pair
-        t0 = time.time()
-        self._pair_and_validate(valid_seqs, targets, output_csv)
-        print(f"   [Step 4 Time] {time.time()-t0:.1f}s")
-    
-    def _mine_integers(self, targets, min_prevalence):
-        print(f"   [Step 1] Mining Conserved Integers (Length: {self.k}bp)...")
-        total_records = len(targets)
-        indices = list(range(total_records))
-        chunk_size = max(1, total_records // (self.cpu * 4))
-        batches = [indices[i:i + chunk_size] for i in range(0, len(indices), chunk_size)]
-        final_counts = defaultdict(int)
-        with multiprocessing.Pool(self.cpu, initializer=init_worker, initargs=(targets,)) as pool:
-            tasks = [(b, self.k) for b in batches]
-            results = pool.map(mine_binary_worker, tasks)
-            for res in results:
-                for kmer_int, count in res.items():
-                    final_counts[kmer_int] += count
-        threshold = int(total_records * min_prevalence)
-        candidates = {k for k, v in final_counts.items() if v >= threshold}
-        print(f"   [Result] {len(candidates)} unique integer candidates found.")
-        return candidates
+        # Auto-adjust k_step based on data size to prevent freezing
+        total_bases = sum(len(seq) for seqs in target_strains.values() for seq in seqs)
 
-    def _filter_integers(self, candidates_set, bg_file, max_bg_prev):
-        print(f"   [Step 2] Filtering against Background (Integer Mode)...")
-        bg_chunks = []
-        chunk = []
-        try:
-            for r in SeqIO.parse(bg_file, "fasta"):
-                chunk.append(str(r.seq).upper())
-                if len(chunk) >= 50:
-                    bg_chunks.append(chunk); chunk = []
-            if chunk: bg_chunks.append(chunk)
-        except: pass 
-        total_bg = sum(len(c) for c in bg_chunks)
-        if total_bg == 0: return candidates_set
-        bad_counts = defaultdict(int)
-        tasks = [(c, self.k, candidates_set) for c in bg_chunks]
-        with multiprocessing.Pool(self.cpu) as pool:
-            results = pool.map(check_bg_binary_worker, tasks)
-            for res in results:
-                for kmer_int, count in res.items(): bad_counts[kmer_int] += count
-        limit = int(total_bg * max_bg_prev)
-        final_set = {k for k in candidates_set if bad_counts[k] <= limit}
-        print(f"   [Result] {len(final_set)} integers survived background filter.")
-        return final_set
+        target_max_p = 0
 
-    def _recover_sequences(self, valid_ints, targets):
-        needed = set(valid_ints)
-        found_map = {}
-        for seq in targets[:50]:
-            if len(found_map) == len(needed): break
-            n = len(seq)
-            if n < self.k: continue
-            for i in range(n - self.k + 1):
-                k_str = seq[i : i+self.k]
-                val = get_canonical_2bit(k_str)
-                if val in needed and val not in found_map:
-                    found_map[val] = k_str
-        return list(found_map.values())
+        all_raw_pairs = []
+        for current_k in range(self.k_min, self.k_max + 1):
+            self.k = current_k
+            print(f"   --- Primer size k={self.k} ---")
 
-    def _calculate_tm(self, seq_str):
-        try: return mt.Tm_NN(Seq(seq_str), nn_table=mt.DNA_NN3, Na=50, Mg=1.5, dNTPs=0.2, dnac1=500, dnac2=500)
-        except: return mt.Tm_NN(Seq(seq_str))
+            # PHASE 1: MINING TARGET PAIRS
+            print(f"   [Phase 1] Mining Target Pairs ({len(target_strains)} strains) with Step={k_step}...")
+            target_pool = Counter()
+            min_copy = int(self.params.get("min_intra_strain_copy", 1))
 
-    def _is_good_sequence(self, seq_str, tm):
-        gc_pct = (seq_str.count('G') + seq_str.count('C')) / len(seq_str) * 100
-        if gc_pct < 20.0 or gc_pct > 80.0: return False
-        if re.search(r'A{6,}|T{6,}|G{6,}|C{6,}', seq_str): return False
-        return True
+            with multiprocessing.Pool(self.cpu) as pool:
+                tasks = [(sid, seqs, self.k, k_step, min_copy) for sid, seqs in target_strains.items()]
+                for arr in pool.imap_unordered(intra_strain_pairing_worker, tasks):
+                    target_pool.update(arr)
 
-    def _pair_and_validate(self, valid_oligos, target_seqs, output_csv):
-        # 1. SETUP
-        valid_set = set(valid_oligos)
-        ref_seq = target_seqs[0]
-        ref_len = len(ref_seq)
-        
-        print(f"   [DEBUG] Reference Genome Length: {ref_len} bp")
-        
-        # 2. TM FILTER
-        oligo_stats = {}
-        tm_min = self.params.get("primer_tm_min", 40.0)
-        tm_max = self.params.get("primer_tm_max", 75.0)
-        
-        for oligo in valid_oligos:
-            tm = self._calculate_tm(oligo)
-            if tm_min <= tm <= tm_max:
-                if self._is_good_sequence(oligo, tm):
-                    oligo_stats[oligo] = tm
-        
-        if not oligo_stats: return
+            base_cons_ratio = self.params.get("design_min_conservation", 0.75)
+            min_cons = int(len(target_strains) * base_cons_ratio)
 
-        # 3. MAP CANDIDATES TO REFERENCE
-        # Note: These are "binding sites" on the Sense strand.
-        site_candidates = [] 
-        for i in range(ref_len - self.k + 1):
-            sub = ref_seq[i : i+self.k]
-            if sub in oligo_stats:
-                site_candidates.append({'start': i, 'seq': sub, 'tm': oligo_stats[sub]})
-                
-        # 4. FIND PAIRS
-        raw_pairs = []
-        min_amp = int(self.params.get("product_size_min", 70))
-        max_amp = int(self.params.get("product_size_max", 250))
-        
-        print(f"   [DEBUG] Pairing distance: {min_amp}bp - {max_amp}bp")
-        
-        for f in site_candidates:
-            f_start = f['start']
-            
-            for r_end in range(f_start + min_amp, f_start + max_amp):
-                if r_end > ref_len: break
-                
-                # This is the sequence ON THE GENOME (+ Strand)
-                downstream_site = ref_seq[r_end-self.k : r_end]
-                
-                # --- HYBRID LOGIC START ---
-                is_conserved = False
-                
-                if self.mode == "rna":
-                    # MODE: ssRNA (Virus)
-                    # We check if the SITE is in our conserved list.
-                    # Because in +ssRNA, only the site exists in the file.
-                    if downstream_site in oligo_stats:
-                        is_conserved = True
-                        
-                else:
-                    # MODE: dsDNA (Bacteria) - DEFAULT
-                    # We check if the REVERSE PRIMER (Complement) is in the conserved list.
-                    # This is how your old code worked. 
-                    rev_primer_seq = str(Seq(downstream_site).reverse_complement())
-                    if rev_primer_seq in oligo_stats:
-                        is_conserved = True
-                # --- HYBRID LOGIC END ---
+            # Filter k-mers based on initial threshold
+            valid_kmers = {h: count for h, count in target_pool.items() if count >= min_cons}
 
-                if is_conserved:
-                    # Construct Primer
-                    rev_primer = str(Seq(downstream_site).reverse_complement())
-                    r_tm = self._calculate_tm(rev_primer)
-                    
-                    if abs(f['tm'] - r_tm) <= 7.0:
-                        raw_pairs.append({
-                            'Fwd': f['seq'], 'Rev': rev_primer, 
-                            'AmpLen': r_end - f_start, 'FwdStart': f_start,
-                            'FwdTm': f['tm'], 'RevTm': r_tm
-                        })
-        
-        print(f"   [DEBUG] {len(raw_pairs)} valid raw pairs found.")
-        
-        # 5. SORT & CLEAN
-        opt_len = (min_amp + max_amp) // 2
-        raw_pairs.sort(key=lambda x: (abs(x['AmpLen'] - opt_len), abs(x['FwdTm'] - x['RevTm'])))
+            # Dynamic Filtering: Limit to max 50,000 k-mers to save RAM & CPU
+            MAX_ELITE = 50000
+            if len(valid_kmers) > MAX_ELITE:
+                # Sort by frequency descending
+                sorted_kmers = sorted(valid_kmers.items(), key=lambda x: x[1], reverse=True)
+                elite_targets = set(h for h, count in sorted_kmers[:MAX_ELITE])
+            else:
+                elite_targets = set(valid_kmers.keys())
 
-        unique_candidates = []
-        seen_positions = []
-        for p in raw_pairs:
-            p1 = p['FwdStart']
-            is_redundant = False
-            for accepted_p1 in seen_positions:
-                if abs(p1 - accepted_p1) < 5:
-                    is_redundant = True; break
-            if not is_redundant:
-                seen_positions.append(p1)
-                unique_candidates.append(p)
-                if len(unique_candidates) >= 1000: break
-        
-        print(f"   [Filtering] Retained {len(unique_candidates)} unique candidates.")
+            print(f"      > Pushing {len(elite_targets)} elite K-mers to Phase 2.")
 
-        # 6. VALIDATE
-        print(f"   [Turbo] Validating using {self.cpu} cores (Fuzzy)...")
-        final_list = []
-        design_threshold = self.params.get("design_min_conservation", 0.95) * 100
-        
-        pool = multiprocessing.Pool(self.cpu, initializer=init_worker, initargs=(target_seqs,))
-        try:
-            results = pool.map(validate_candidate_fuzzy, unique_candidates)
-            for i, prev in enumerate(results):
-                if len(final_list) >= self.max_candidates: break
-                if prev >= design_threshold:
-                    pair = unique_candidates[i]
-                    final_list.append({
-                        'Set_ID': f"Set_{len(final_list)+1}",
-                        'Forward Primer': pair['Fwd'],
-                        'Reverse Primer': pair['Rev'],
-                        'Prevalence': f"{prev:.1f}%"
-                    })
-                    print(f"      [+] Pair Validated! Prev: {prev:.1f}% (Fuzzy)")
-        finally:
-            pool.close(); pool.join()
-        
-        if final_list:
-            with open(output_csv, 'w', newline='') as f:
-                dict_writer = csv.DictWriter(f, final_list[0].keys())
-                dict_writer.writeheader()
-                dict_writer.writerows(final_list)
-            print(f"   ✅ [SUCCESS] Saved {len(final_list)} pairs.")
+            # Explicit memory cleanup
+            del target_pool
+            del valid_kmers
+            gc.collect()
+
+            # PHASE 2: BACKGROUND SCRUBBING
+            if bg_strains and elite_targets:
+                bg_blacklist = set()
+                elite_frozen = frozenset(elite_targets)
+
+                with multiprocessing.Pool(self.cpu) as pool:
+                    bg_step = max(1, k_step // 2)
+                    tasks = [(sid, seqs, self.k, elite_frozen, bg_step) for sid, seqs in bg_strains.items()]
+                    for arr in pool.imap_unordered(self._targeted_kmer_worker, tasks):
+                        bg_blacklist.update(arr)
+
+                elite_targets = elite_targets - bg_blacklist
+                print(f"      > Remaining {len(elite_targets)} clean primers.")
+
+            # PHASE 3: FINAL SELECTION
+            if elite_targets:
+                raw_pairs = self._extract_raw_pairs(elite_targets, target_strains)
+                all_raw_pairs.extend(raw_pairs)
+
+        if all_raw_pairs:
+            print(f"   [Phase 3] Scoring & Ranking {len(all_raw_pairs)} candidate pairs...")
+            self._score_and_save(all_raw_pairs, target_strains, output_csv)
+            print(f"    ✅ Stage 2 Complete: {time.time()-t_start:.1f}s")
         else:
-            print("   ❌ No pairs passed validation.")
+            print("    ⚠️ Could not find valid primers for any length.")
+
+    def _targeted_kmer_worker(self, args):
+        """Scan Background with stride for speedup."""
+        sid, sequences, k, elite_set, step = args
+        found_hashes = set()
+        mask = (1 << (2 * k)) - 1
+        for seq in sequences:
+            seq_u = seq.upper()
+            n = len(seq_u)
+            for i in range(0, n - k + 1, step):
+                sub = seq_u[i : i + k]
+                h = 0
+                for char in sub:
+                    val = DNA_MAP.get(char, -1)
+                    if val == -1:
+                        h = -1
+                        break
+                    h = (h << 2) | val
+                if h != -1 and (h & mask) in elite_set:
+                    found_hashes.add(h & mask)
+        return array.array('Q', sorted(list(found_hashes)))
+
+    def _load_fastas(self, input_path):
+        data = defaultdict(list)
+        if not input_path or not os.path.exists(input_path): return data
+        files = [os.path.join(input_path, f) for f in os.listdir(input_path)
+                 if f.lower().endswith(('.fasta', '.fa', '.fna', '.fas'))] if os.path.isdir(input_path) else [input_path]
+        for f in files:
+            for r in SeqIO.parse(f, "fasta"):
+                sid = r.id.split('|')[0] if r.id and '|' in r.id else os.path.basename(f)
+                data[sid].append(str(r.seq).upper())
+        return data
+
+    def _extract_raw_pairs(self, elite_hashes, target_strains):
+        ref_sid = list(target_strains.keys())[0]
+        ref_seqs = target_strains[ref_sid]
+        raw_pairs, seen_pos, pos_gap = [], set(), 150
+        mask = (1 << (2 * self.k)) - 1
+
+        for seq in ref_seqs:
+            anchors = []
+            for i in range(len(seq) - self.k + 1):
+                sub = seq[i : i + self.k]
+                h = 0
+                valid = True
+                for char in sub:
+                    if char in DNA_MAP: h = (h << 2) | DNA_MAP[char]
+                    else: {valid := False}; break
+                if valid and (h & mask) in elite_hashes:
+                    anchors.append((i, sub))
+
+            for i in range(len(anchors)):
+                pos_a, seq_a = anchors[i]
+                if any(abs(pos_a - p) < pos_gap for p in seen_pos): continue
+                for j in range(i + 1, len(anchors)):
+                    pos_b, seq_b = anchors[j]
+                    dist = pos_b - pos_a + self.k
+                    if self.min_p <= dist <= self.max_p:
+                        f, r = seq_a, str(Seq(seq_b).reverse_complement())
+                        tm_f = self._calc_tm(f)
+                        tm_r = self._calc_tm(r)
+                        # IDT/ThermoFisher-compatible pre-filter:
+                        # 1) Both primers must be within configured Tm range
+                        # 2) Tm_Delta (|Tm_F - Tm_R|) must be <= 3°C
+                        if (self.tm_min <= tm_f <= self.tm_max and
+                            self.tm_min <= tm_r <= self.tm_max and
+                            abs(tm_f - tm_r) <= self.tm_delta_max and
+                            self._passes_structural_qc(f, r)):
+                            raw_pairs.append({'Fwd': f, 'Rev': r, 'Pos': pos_a})
+                            seen_pos.add(pos_a)
+                            break
+                    elif dist > self.max_p: break
+                if len(raw_pairs) >= self.max_candidates: break
+        return raw_pairs
+
+    def _score_and_save(self, all_raw_pairs, target_strains, output_csv):
+        if not all_raw_pairs: return
+        flat_tg = [(sid, s) for sid, seqs in target_strains.items() for s in seqs]
+        with multiprocessing.Pool(self.cpu, initializer=init_worker, initargs=(flat_tg,)) as p:
+            results = p.map(self._final_score_worker, all_raw_pairs)
+
+        final_list = []
+        for i, (p, res) in enumerate(zip(all_raw_pairs, results)):
+            final_list.append({
+                "Set_ID": f"Set_{i+1}", "Forward Primer": p['Fwd'], "Reverse Primer": p['Rev'],
+                "Prevalence": f"{res[0]:.1f}%", "Avg_Copy_Number": f"{res[1]:.2f}"
+            })
+        df = pd.DataFrame(final_list).sort_values("Avg_Copy_Number", ascending=False)
+        df.head(self.max_candidates).to_csv(output_csv, index=False)
+
+    def _final_score_worker(self, pair):
+        global WORKER_GENOMES
+        f, r_rc = pair['Fwd'], str(Seq(pair['Rev']).reverse_complement())
+        hits = defaultdict(int)
+        for sid, seq in WORKER_GENOMES:
+            hits[sid] += min(seq.count(f), seq.count(r_rc))
+        pos_strains = sum(1 for h in hits.values() if h > 0)
+        return (pos_strains/len(set(s[0] for s in WORKER_GENOMES)))*100, sum(hits.values())/pos_strains if pos_strains > 0 else 0
+
+    def _passes_structural_qc(self, fwd, rev):
+        try:
+            from .multiplex import check_dimer, check_hairpin
+            for seq in (fwd, rev):
+                if is_low_complexity_sequence(seq):
+                    return False
+                if check_hairpin(seq) >= 4:
+                    return False
+                any_match, three_prime = check_dimer(seq, seq)
+                if three_prime >= 4 or any_match >= 8:
+                    return False
+            any_match, three_prime = check_dimer(fwd, rev)
+            return three_prime < 4 and any_match < 8
+        except Exception:
+            return True
+
+    def _calc_tm(self, seq):
+        """IDT OligoAnalyzer / ThermoFisher-compatible Tm (SantaLucia 1998).
+        Conditions: Na=50mM, Mg=3.0mM, dNTPs=0.8mM, [Oligo]=250nM."""
+        clean = "".join([c for c in str(seq).upper() if c in 'ATGC'])
+        return mt.Tm_NN(
+            Seq(clean),
+            nn_table=mt.DNA_NN3,
+            Na=50,
+            Mg=3.0,
+            dNTPs=0.8,
+            dnac1=250,
+            dnac2=0
+        )

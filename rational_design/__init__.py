@@ -4,10 +4,13 @@ from .designer import PrimerDesigner
 from .validator import InSilicoValidator
 from .prober import ProbeSelector
 
+__version__ = "1.0.3"
+
 __all__ = [
-    "SequenceFetcher", 
-    "LibraryConstructor", 
-    "PrimerDesigner", 
-    "InSilicoValidator", 
+    "__version__",
+    "SequenceFetcher",
+    "LibraryConstructor",
+    "PrimerDesigner",
+    "InSilicoValidator",
     "ProbeSelector"
 ]

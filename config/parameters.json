@@ -18,5 +18,6 @@
     "max_mismatch": 2,
     "validation_max_cross_reactivity": 5.0,
     "probe_max_mismatch": 2,
-    "enable_blast": false
+    "enable_blast": false,
+    "degenerate_primers": false
 }

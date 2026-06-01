@@ -4,6 +4,17 @@ __pycache__/
 *$py.class
 .DS_Store
 Thumbs.db
+.Rhistory
+.agents/
+.pytest_cache/
+build/
+dist/
+*.egg-info/
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+frontend/.env.local
+frontend/*.tsbuildinfo
 
 # --- Virtual Environments ---
 venv/
@@ -20,10 +31,16 @@ database/background/*
 1_workspace/
 2_candidates/
 3_validation/
+4_validation_report/
+runs/
+audit_trail.json
+validation_report.json
 
 # --- User Specific Configs ---
 # You might want to keep the default parameters.json, but ignore user copies
 run_parameters_cycle_*.json
+config/user_settings.json
+config/primers_to_validate.csv
 
 # --- Logs & Output Files ---
 pipeline_log.txt

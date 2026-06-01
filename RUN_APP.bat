@@ -1,28 +1,21 @@
 @echo off
 setlocal
+cd /d "%~dp0"
 
 echo ========================================================
 echo 🧬 Starting Rational Primer Design (Dark Mode)...
 echo ========================================================
 
-:: --- CONFIGURATION ---
-set PYTHON_EXE=python
-
-:: OPTIONAL: Uncomment to force a specific path if "python" isn't found
-:: set PYTHON_EXE="C:\Program Files\Python311\python.exe"
-
-:: --- CHECK INSTALLATION ---
-echo Checking for Streamlit...
-%PYTHON_EXE% -c "import streamlit" >nul 2>&1
-if %errorlevel% neq 0 (
-    echo [WARNING] Streamlit not found. Attempting to install...
-    %PYTHON_EXE% -m pip install streamlit
+if not exist "venv\" (
+    echo [ERROR] Virtual environment not found. Please run INSTALL.bat first.
+    pause
+    exit /b
 )
 
-:: --- RUN THE APP IN DARK MODE ---
-:: We added --theme.base="dark" to force the dark theme
+set PYTHON_EXE=venv\Scripts\python.exe
+
 echo Launching GUI...
-%PYTHON_EXE% -m streamlit run gui.py --theme.base="dark"
+%PYTHON_EXE% -m streamlit run rational_design/gui.py --theme.base="dark"
 
 if %errorlevel% neq 0 (
     echo.
