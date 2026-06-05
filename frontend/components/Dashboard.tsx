@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, ReactNode, useEffect, useMemo, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 
 type Lang = "vi" | "en";
 type WorkspaceView = "dashboard" | "local" | "auto" | "ai" | "validate" | "multiplex" | "about";
@@ -241,6 +241,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     missingItem: "Cần bổ sung",
     enabledItem: "Đang bật",
     disabledItem: "Đang tắt",
+    primersCount: "Mồi",
     iupacWarning: "IUPAC tăng độ bao phủ chủng biến dị nhưng có thể tăng phản ứng chéo; luôn kiểm tra background trước wet-lab.",
     resultInterpretation: "Diễn giải nhanh kết quả",
     copy: "Copy",
@@ -418,6 +419,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     missingItem: "Needs input",
     enabledItem: "Enabled",
     disabledItem: "Disabled",
+    primersCount: "Primers",
     iupacWarning: "IUPAC increases coverage of variant strains but can increase cross-reactivity; always screen backgrounds before wet-lab use.",
     resultInterpretation: "Quick result interpretation",
     copy: "Copy",
@@ -500,14 +502,14 @@ const PARAM_FIELDS: Array<{ key: string; type: "number" | "boolean"; min?: numbe
   { key: "degenerate_primers", type: "boolean" },
 ];
 
-const NAV: Array<{ view: WorkspaceView; href: string }> = [
-  { view: "dashboard", href: "/dashboard" },
-  { view: "local", href: "/design/local" },
-  { view: "auto", href: "/design/auto" },
-  { view: "ai", href: "/ai" },
-  { view: "validate", href: "/validate" },
-  { view: "multiplex", href: "/multiplex" },
-  { view: "about", href: "/about" },
+const NAV: Array<{ view: WorkspaceView; href: string; icon: string }> = [
+  { view: "dashboard", href: "/dashboard", icon: "▤" },
+  { view: "local", href: "/design/local", icon: "⌂" },
+  { view: "auto", href: "/design/auto", icon: "◎" },
+  { view: "ai", href: "/ai", icon: "◆" },
+  { view: "validate", href: "/validate", icon: "✓" },
+  { view: "multiplex", href: "/multiplex", icon: "⊞" },
+  { view: "about", href: "/about", icon: "ⓘ" },
 ];
 
 export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
@@ -522,9 +524,12 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   const [error, setError] = useState("");
   const [isBusy, setIsBusy] = useState(false);
 
-  const [localTarget, setLocalTarget] = useState("test_data/target");
-  const [localBackground, setLocalBackground] = useState("test_data/background");
+  const [localTarget, setLocalTarget] = useState("");
+  const [localBackground, setLocalBackground] = useState("");
   const [outputName, setOutputName] = useState("primer-design-run");
+  const [localMode, setLocalMode] = useState<"path" | "upload">("path");
+  const [uploadTargetFiles, setUploadTargetFiles] = useState<File[]>([]);
+  const [uploadBackgroundFiles, setUploadBackgroundFiles] = useState<File[]>([]);
 
   const [email, setEmail] = useState("");
   const [rememberEmail, setRememberEmail] = useState(false);
@@ -596,11 +601,11 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
     setAiBaseUrl(window.localStorage.getItem("rpd-ai-base-url") ?? "http://localhost:11434/v1");
     setAiModel(window.localStorage.getItem("rpd-ai-model") ?? "llama3");
     setOutputName(window.localStorage.getItem("rpd-output-name") ?? "primer-design-run");
-    setLocalTarget(window.localStorage.getItem("rpd-local-target") ?? "test_data/target");
-    setLocalBackground(window.localStorage.getItem("rpd-local-background") ?? "test_data/background");
-    setValidationTarget(window.localStorage.getItem("rpd-validation-target") ?? "test_data/target");
-    setValidationBackground(window.localStorage.getItem("rpd-validation-background") ?? "test_data/background");
-    setMultiplexBackground(window.localStorage.getItem("rpd-multiplex-background") ?? "test_data/background");
+    setLocalTarget(window.localStorage.getItem("rpd-local-target") ?? "");
+    setLocalBackground(window.localStorage.getItem("rpd-local-background") ?? "");
+    setValidationTarget(window.localStorage.getItem("rpd-validation-target") ?? "");
+    setValidationBackground(window.localStorage.getItem("rpd-validation-background") ?? "");
+    setMultiplexBackground(window.localStorage.getItem("rpd-multiplex-background") ?? "");
   }, []);
 
   useEffect(() => {
@@ -671,14 +676,14 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   async function api<T>(path: string, init?: RequestInit): Promise<T> {
     const response = await fetch(`${API_BASE}${path}`, init);
     if (!response.ok) {
-      let detail = response.statusText;
+      let detail: unknown = response.statusText;
       try {
-        const payload = (await response.json()) as { detail?: string };
+        const payload = (await response.json()) as Record<string, unknown>;
         detail = payload.detail ?? detail;
       } catch {
         detail = await response.text();
       }
-      throw new Error(detail);
+      throw new Error(Array.isArray(detail) ? detail.map((d: unknown) => typeof d === "object" && d ? String((d as Record<string, unknown>).msg ?? JSON.stringify(d)) : String(d)).join("; ") : String(detail));
     }
     return response.json() as Promise<T>;
   }
@@ -768,6 +773,38 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
       ai_base_url: aiBaseUrl,
       ai_model: aiModel,
     });
+  }
+
+  async function startUpload(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (uploadTargetFiles.length === 0 || uploadBackgroundFiles.length === 0) return setError(tx.validationRequired);
+    setIsBusy(true);
+    setLogs("");
+    setResults(null);
+    setError("");
+    try {
+      const formData = new FormData();
+      for (const file of uploadTargetFiles) formData.append("target_files", file);
+      for (const file of uploadBackgroundFiles) formData.append("background_files", file);
+      if (outputName.trim()) formData.append("output_name", outputName.trim());
+      formData.append("parameters", JSON.stringify(parameters));
+      formData.append("language", lang);
+      formData.append("ai_base_url", aiBaseUrl);
+      formData.append("ai_model", aiModel);
+      const created = await api<Job>("/api/jobs/upload", {
+        method: "POST",
+        body: formData,
+      });
+      setJob(created);
+      setUploadTargetFiles([]);
+      setUploadBackgroundFiles([]);
+      void refreshJobs();
+      void refreshStatus();
+    } catch (err) {
+      setError(messageOf(err, tx.unknownError));
+    } finally {
+      setIsBusy(false);
+    }
   }
 
   async function startAuto(event?: FormEvent<HTMLFormElement>) {
@@ -958,10 +995,18 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   async function runProposal() {
     if (!proposal) return;
     const action = String(proposal.action ?? "");
+    const needsEmail = action === "propose_design" || action === "propose_validation" || action === "propose_multiplex";
+    if (needsEmail && !validEmail(email)) {
+      return setError(tx.email + " " + tx.validationRequired);
+    }
+    if (action === "propose_local_design" && (!String(proposal.local_target ?? "").trim() || !String(proposal.local_background ?? "").trim())) {
+      return setError(tx.validationRequired);
+    }
+    setProposal(null);
     if (action === "propose_local_design") {
       await createJob("/api/jobs/local", {
-        target_path: String(proposal.local_target ?? ""),
-        background_path: String(proposal.local_background ?? ""),
+        target_path: String(proposal.local_target ?? "").trim(),
+        background_path: String(proposal.local_background ?? "").trim(),
         output_name: outputName,
         parameters: proposalParameters(proposal, parameters),
         language: lang,
@@ -1042,11 +1087,15 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
           </div>
         </div>
         <nav className="top-nav" aria-label={tx.routes}>
-          {NAV.map((item) => (
+          {NAV.filter((n) => n.view !== "about").map((item) => (
             <Link key={item.view} href={item.href} className={view === item.view ? "top-nav-link active" : "top-nav-link"}>
-              {tx[item.view]}
+              <span className="nav-icon" aria-hidden="true">{item.icon}</span>
+              <span className="nav-label">{tx[item.view]}</span>
             </Link>
           ))}
+          <Link href="/about" className={`top-nav-link about-link ${view === "about" ? "active" : ""}`}>
+            <span className="nav-icon" aria-hidden="true">ⓘ</span>
+          </Link>
         </nav>
         <div className="status-strip">
           <span className={`dot ${job?.status ?? "idle"}`} />
@@ -1096,10 +1145,42 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
 
           {view !== "about" ? (
             <section className="dashboard-grid">
-              <Metric label={tx.jobs} value={String(jobs.length)} />
-              <Metric label={tx.latest} value={job ? job.id.slice(-12) : "-"} />
-              <Metric label={tx.assays} value={String(results?.final_assays.row_count ?? results?.multiplex_kits.row_count ?? 0)} />
-              <Metric label={tx.crossReactive} value={String(crossSummary?.total_cross_reactive_strains ?? 0)} />
+              {view === "dashboard" ? (
+                <>
+                  <Metric label={tx.jobs} value={String(jobs.length)} icon="▤" />
+                  <Metric label={tx.latest} value={job ? job.id.slice(-12) : "-"} icon="◷" />
+                  <Metric label={tx.assays} value={String(results?.final_assays.row_count ?? results?.multiplex_kits.row_count ?? 0)} icon="⊞" />
+                  <Metric label={tx.crossReactive} value={String(crossSummary?.total_cross_reactive_strains ?? 0)} icon="⚠" />
+                </>
+              ) : view === "local" || view === "auto" ? (
+                <>
+                  <Metric label={tx.jobs} value={String(jobs.length)} icon="▤" />
+                  <Metric label={tx.outputName} value={outputName || "-"} icon="✎" />
+                  <Metric label={tx.targetPath} value={view === "local" ? localTarget : (targets[0]?.query || "-")} icon="⌂" />
+                  <Metric label={tx.assays} value={String(results?.final_assays.row_count ?? 0)} icon="⊞" />
+                </>
+              ) : view === "validate" ? (
+                <>
+                  <Metric label={tx.jobs} value={String(jobs.length)} icon="▤" />
+                  <Metric label={tx.primersCount || "Primers"} value={String(validationPrimers.filter((p) => p.fwd.trim()).length)} icon="✓" />
+                  <Metric label={tx.maxMismatch} value={String(maxMismatch)} icon="◷" />
+                  <Metric label={tx.assays} value={String(results?.known_primer_validation.row_count ?? 0)} icon="⊞" />
+                </>
+              ) : view === "multiplex" ? (
+                <>
+                  <Metric label={tx.jobs} value={String(jobs.length)} icon="▤" />
+                  <Metric label={tx.assayType} value={assayType} icon="⊞" />
+                  <Metric label={tx.sourceMode} value={tx[`source_multiplex_${multiplexMode}`] || multiplexMode} icon="◎" />
+                  <Metric label={tx.assays} value={String(results?.multiplex_kits.row_count ?? 0)} icon="⊞" />
+                </>
+              ) : view === "ai" ? (
+                <>
+                  <Metric label={tx.jobs} value={String(jobs.length)} icon="▤" />
+                  <Metric label={tx.aiModel} value={aiModel || "-"} icon="◆" />
+                  <Metric label={tx.aiEndpoint || "Endpoint"} value={aiBaseUrl ? aiBaseUrl.replace(/^https?:\/\//, "") : "-"} icon="◎" />
+                  <Metric label={tx.assays} value={String(results?.final_assays.row_count ?? 0)} icon="⊞" />
+                </>
+              ) : null}
             </section>
           ) : null}
 
@@ -1119,16 +1200,23 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
                 {view === "local" ? (
                   <LocalMode
                     tx={tx}
+                    mode={localMode}
+                    setMode={setLocalMode}
                     target={localTarget}
                     background={localBackground}
-                    outputName={outputName}
                     setTarget={setLocalTarget}
                     setBackground={setLocalBackground}
+                    outputName={outputName}
                     setOutputName={setOutputName}
                     requestBrowse={requestBrowse}
                     parameters={parameters}
                     onSubmit={startLocal}
+                    onUploadSubmit={startUpload}
                     isBusy={isBusy}
+                    uploadTargetFiles={uploadTargetFiles}
+                    uploadBackgroundFiles={uploadBackgroundFiles}
+                    setUploadTargetFiles={setUploadTargetFiles}
+                    setUploadBackgroundFiles={setUploadBackgroundFiles}
                   />
                 ) : null}
                 {view === "auto" ? (
@@ -1428,12 +1516,34 @@ function StatusLine({ label, value }: { label: string; value: string }) {
   );
 }
 
+function WelcomeCard({ tx }: { tx: Record<string, string> }) {
+  return (
+    <div className="welcome-card">
+      <h3>{tx.aboutTitle}</h3>
+      <p>{tx.aboutIntro}</p>
+      <div className="workflow-steps">
+        <div><strong>1.</strong> {tx.aboutWorkflowDesign}</div>
+        <div><strong>2.</strong> {tx.aboutWorkflowValidate}</div>
+        <div><strong>3.</strong> {tx.aboutWorkflowReview}</div>
+      </div>
+      <p className="muted">
+        {tx.language === "vi"
+          ? "Chọn một chức năng ở thanh điều hướng phía trên để bắt đầu."
+          : "Select a workflow from the navigation bar above to get started."}
+      </p>
+    </div>
+  );
+}
+
 function DashboardHome(props: { tx: Record<string, string>; jobs: Job[]; legacyRuns: HistoricalRun[]; selectedJob: Job | null; select: (job: Job) => void }) {
   return (
     <section className="panel">
       <PanelTitle title={props.tx.dashboardTitle} />
       {props.jobs.length === 0 ? (
-        <div className="empty-state">{props.tx.noJobs}</div>
+        <>
+          <WelcomeCard tx={props.tx} />
+          <div className="empty-state">{props.tx.noJobs}</div>
+        </>
       ) : (
         <div className="history-list">
           {props.jobs.map((item) => (
@@ -1506,37 +1616,156 @@ function AboutPage({ tx }: { tx: Record<string, string> }) {
 
 function LocalMode(props: {
   tx: Record<string, string>;
+  mode: "path" | "upload";
+  setMode: (mode: "path" | "upload") => void;
   target: string;
   background: string;
-  outputName: string;
   setTarget: (value: string) => void;
   setBackground: (value: string) => void;
+  outputName: string;
   setOutputName: (value: string) => void;
   requestBrowse: (path: string, kind: BrowseKind, onSelect: (path: string) => void) => void;
   parameters: Parameters;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onUploadSubmit: (event: FormEvent<HTMLFormElement>) => void;
   isBusy: boolean;
+  uploadTargetFiles: File[];
+  uploadBackgroundFiles: File[];
+  setUploadTargetFiles: (files: File[]) => void;
+  setUploadBackgroundFiles: (files: File[]) => void;
 }) {
+  const [dragTarget, setDragTarget] = useState(false);
+  const [dragBackground, setDragBackground] = useState(false);
+  const targetFileInput = useRef<HTMLInputElement>(null);
+  const backgroundFileInput = useRef<HTMLInputElement>(null);
+
+  function handleTargetFiles(files: FileList | null) {
+    if (!files) return;
+    const fastaFiles = Array.from(files).filter((f) => f.name.endsWith(".fasta") || f.name.endsWith(".fa") || f.name.endsWith(".fna"));
+    if (fastaFiles.length === 0) return;
+    props.setUploadTargetFiles(fastaFiles);
+  }
+
+  function handleBackgroundFiles(files: FileList | null) {
+    if (!files) return;
+    const fastaFiles = Array.from(files).filter((f) => f.name.endsWith(".fasta") || f.name.endsWith(".fa") || f.name.endsWith(".fna"));
+    if (fastaFiles.length === 0) return;
+    props.setUploadBackgroundFiles(fastaFiles);
+  }
+
   return (
-    <form className="panel" onSubmit={props.onSubmit}>
-      <PanelTitle title={props.tx.localTitle} />
-      <div className="field-grid">
-        <PathInput label={props.tx.targetPath} value={props.target} onChange={props.setTarget} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
-        <PathInput label={props.tx.backgroundPath} value={props.background} onChange={props.setBackground} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
+    <>
+      <div className="segmented-control" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          className={props.mode === "path" ? "active" : ""}
+          onClick={() => props.setMode("path")}
+        >
+          {props.tx.source_local}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          className={props.mode === "upload" ? "active" : ""}
+          onClick={() => props.setMode("upload")}
+        >
+          {props.tx.source_upload}
+        </button>
       </div>
-      <PreflightChecklist
-        tx={props.tx}
-        items={[
-          { label: props.tx.targetPath, ok: Boolean(props.target.trim()) },
-          { label: props.tx.backgroundPath, ok: Boolean(props.background.trim()) },
-          { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
-          { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
-        ]}
-      />
-      <button className="primary" disabled={props.isBusy} type="submit">
-        {props.tx.runLocal}
-      </button>
-    </form>
+
+      {props.mode === "path" ? (
+        <form className="panel" onSubmit={props.onSubmit}>
+          <PanelTitle title={props.tx.localTitle} />
+          <div className="field-grid">
+            <PathInput label={props.tx.targetPath} value={props.target} onChange={props.setTarget} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
+            <PathInput label={props.tx.backgroundPath} value={props.background} onChange={props.setBackground} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
+          </div>
+          <PreflightChecklist
+            tx={props.tx}
+            items={[
+              { label: props.tx.targetPath, ok: Boolean(props.target.trim()) },
+              { label: props.tx.backgroundPath, ok: Boolean(props.background.trim()) },
+              { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
+              { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
+            ]}
+          />
+          <button className="primary" disabled={props.isBusy} type="submit">
+            {props.tx.runLocal}
+          </button>
+        </form>
+      ) : (
+        <form className="panel" onSubmit={props.onUploadSubmit}>
+          <PanelTitle title={props.tx.source_upload} />
+          <div className="field-grid">
+            <div
+              className={`drop-zone ${dragTarget ? "drag-over" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragTarget(true); }}
+              onDragLeave={() => setDragTarget(false)}
+              onDrop={(e) => { e.preventDefault(); setDragTarget(false); handleTargetFiles(e.dataTransfer.files); }}
+              onClick={() => targetFileInput.current?.click()}
+            >
+              <input
+                ref={targetFileInput}
+                type="file"
+                multiple
+                accept=".fasta,.fa,.fna"
+                style={{ display: "none" }}
+                onChange={(e) => handleTargetFiles(e.target.files)}
+              />
+              {props.uploadTargetFiles.length > 0 ? (
+                <div>
+                  <strong>{props.tx.targetPath}:</strong>
+                  {props.uploadTargetFiles.map((f) => (
+                    <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
+                  ))}
+                </div>
+              ) : (
+                <span className="drop-zone-hint">{props.tx.targetPath} — {props.tx.browse}</span>
+              )}
+            </div>
+            <div
+              className={`drop-zone ${dragBackground ? "drag-over" : ""}`}
+              onDragOver={(e) => { e.preventDefault(); setDragBackground(true); }}
+              onDragLeave={() => setDragBackground(false)}
+              onDrop={(e) => { e.preventDefault(); setDragBackground(false); handleBackgroundFiles(e.dataTransfer.files); }}
+              onClick={() => backgroundFileInput.current?.click()}
+            >
+              <input
+                ref={backgroundFileInput}
+                type="file"
+                multiple
+                accept=".fasta,.fa,.fna"
+                style={{ display: "none" }}
+                onChange={(e) => handleBackgroundFiles(e.target.files)}
+              />
+              {props.uploadBackgroundFiles.length > 0 ? (
+                <div>
+                  <strong>{props.tx.backgroundPath}:</strong>
+                  {props.uploadBackgroundFiles.map((f) => (
+                    <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
+                  ))}
+                </div>
+              ) : (
+                <span className="drop-zone-hint">{props.tx.backgroundPath} — {props.tx.browse}</span>
+              )}
+            </div>
+          </div>
+          <PreflightChecklist
+            tx={props.tx}
+            items={[
+              { label: props.tx.targetPath, ok: props.uploadTargetFiles.length > 0 },
+              { label: props.tx.backgroundPath, ok: props.uploadBackgroundFiles.length > 0 },
+              { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
+              { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
+            ]}
+          />
+          <button className="primary" disabled={props.isBusy} type="submit">
+            {props.tx.runLocal}
+          </button>
+        </form>
+      )}
+    </>
   );
 }
 
@@ -1632,11 +1861,11 @@ function AiMode(props: {
         <div className="proposal">
           <div className="panel-heading">
             <h3>{props.tx.proposal}</h3>
-            <button className="ghost" type="button" onClick={props.runProposal}>
+            <button className="primary" type="button" onClick={props.runProposal}>
               {props.tx.runProposal}
             </button>
           </div>
-          <pre>{JSON.stringify(props.proposal, null, 2)}</pre>
+          <ProposalSummary proposal={props.proposal} tx={props.tx} />
         </div>
       ) : null}
     </section>
@@ -2136,7 +2365,47 @@ function ParametersPanel(props: {
   );
 }
 
+function pipelineSteps(terminal: string): Array<{ label: string; done: boolean }> {
+  const lines = terminal.split("\n");
+  const steps: Array<{ label: string; done: boolean }> = [];
+  let inPipeline = false;
+  for (const line of lines) {
+    if (/STAGE 1|BUILDING DATASETS/.test(line) && !inPipeline) { inPipeline = true; steps.push({ label: "Building datasets", done: false }); }
+    if (/STAGE 2|DESIGNING PRIMERS/.test(line)) { steps.push({ label: "Designing primers", done: false }); }
+    if (/STAGE 3|FILTERING/.test(line)) { steps.push({ label: "Filtering candidates", done: false }); }
+    if (/STAGE 4|SAVING.*ASSAY/.test(line)) { steps.push({ label: "Saving assay results", done: false }); }
+    if (/STAGE 5|PCR|VALIDAT/.test(line)) { steps.push({ label: "Validating in-silico PCR", done: false }); }
+    if (/STAGE 6|SAVING VALIDATION/.test(line)) { steps.push({ label: "Saving validation report", done: false }); }
+    if (/✅/.test(line) && steps.length > 0) steps[steps.length - 1].done = true;
+    if (/❌ FAILED/.test(line) && steps.length > 0) steps[steps.length - 1].done = false;
+  }
+  if (inPipeline) steps[0].done = true;
+  return steps;
+}
+
+function pipelineError(terminal: string): string | null {
+  const lines = terminal.split("\n");
+  for (const line of lines) {
+    if (/❌|FAILED|⚠️|Could not find/.test(line)) return line.trim();
+    if (/Traceback/.test(line)) {
+      const idx = lines.indexOf(line);
+      return lines.slice(idx, Math.min(idx + 4, lines.length)).join(" ").trim();
+    }
+  }
+  return null;
+}
+
 function MonitorPanel(props: { tx: Record<string, string>; job: Job | null; terminal: string; cancel: () => void; deleteJob: () => void; refresh: () => void }) {
+  const steps = useMemo(() => pipelineSteps(props.terminal), [props.terminal]);
+  const errorMsg = useMemo(() => pipelineError(props.terminal), [props.terminal]);
+  const failed = props.job?.status === "failed";
+  const terminalRef = useRef<HTMLPreElement>(null);
+  function scrollToBottom() {
+    terminalRef.current?.scrollTo({ top: terminalRef.current.scrollHeight, behavior: "smooth" });
+  }
+  useEffect(() => {
+    if (props.job?.status === "running") scrollToBottom();
+  }, [props.terminal]);
   return (
     <section className="panel">
       <div className="panel-heading">
@@ -2165,12 +2434,34 @@ function MonitorPanel(props: { tx: Record<string, string>; job: Job | null; term
           ) : null}
         </div>
       </div>
+      {failed && errorMsg ? (
+        <div className="error-banner">
+          <strong>{props.tx.failed}:</strong> {errorMsg}
+        </div>
+      ) : null}
       <div className="run-summary">
         <Metric label={props.tx.jobLabel} value={props.job ? props.job.id.slice(-12) : "-"} />
         <Metric label={props.tx.sourceLabel} value={props.job?.source ? sourceText(props.tx, props.job.source) : "-"} />
         <Metric label={props.tx.outputLabel} value={props.job?.output_dir ?? "-"} />
       </div>
-      <pre className="terminal">{props.terminal}</pre>
+      {steps.length > 0 ? (
+        <div className="pipeline-steps">
+          {steps.map((step) => (
+            <div key={step.label} className={`pipeline-step ${step.done ? "done" : props.job?.status === "running" ? "active" : ""}`}>
+              <span className="step-indicator">{step.done ? "✓" : props.job?.status === "running" ? "○" : "○"}</span>
+              <span>{step.label}</span>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      <div className="terminal-wrap">
+        <pre className="terminal" ref={terminalRef}>{props.terminal || props.tx.logWaiting}</pre>
+        {props.terminal && props.terminal.length > 200 ? (
+          <button className="terminal-scroll-btn ghost" type="button" onClick={scrollToBottom} title="Scroll to bottom">
+            ↓
+          </button>
+        ) : null}
+      </div>
     </section>
   );
 }
@@ -2261,11 +2552,11 @@ function PanelTitle({ title }: { title: string }) {
   );
 }
 
-function Metric({ label, value }: { label: string; value: string }) {
+function Metric({ label, value, icon }: { label: string; value: string; icon?: string }) {
   return (
     <div className="metric">
-      <span>{label}</span>
-      <strong title={value}>{value}</strong>
+      <span>{icon ? <span className="metric-icon" aria-hidden="true">{icon}</span> : null}{label}</span>
+      <strong title={value}>{value || "-"}</strong>
     </div>
   );
 }
@@ -2381,6 +2672,40 @@ function validEmail(value: string) {
 function validPrimerPair(item: PrimerPair) {
   const allowed = /^[ATGCRYSWKMNBDHV]+$/i;
   return allowed.test(item.fwd.trim()) && allowed.test(item.rev.trim()) && item.fwd.trim().length >= 8 && item.rev.trim().length >= 8;
+}
+
+function ProposalSummary({ proposal, tx }: { proposal: Record<string, unknown>; tx: Record<string, string> }) {
+  const action = String(proposal.action ?? "");
+  const items: Array<{ label: string; value: string }> = [];
+
+  if (action === "propose_local_design") {
+    items.push({ label: tx.targetPath, value: String(proposal.local_target ?? "") });
+    items.push({ label: tx.backgroundPath, value: String(proposal.local_background ?? "") });
+  } else if (action === "propose_design" || action === "propose_validation") {
+    const targets = proposalList(proposal, "targets", "target");
+    const backgrounds = proposalList(proposal, "backgrounds", "background");
+    if (targets.length > 0) items.push({ label: tx.targetQueries, value: targets.map((t: unknown) => typeof t === "object" && t ? (t as { query?: string }).query ?? "" : String(t)).join(", ") });
+    if (backgrounds.length > 0) items.push({ label: tx.backgroundQueries, value: backgrounds.map((b: unknown) => typeof b === "object" && b ? (b as { query?: string }).query ?? "" : String(b)).join(", ") });
+  }
+
+  if (proposal.min_sensitivity) items.push({ label: tx.min_sensitivity, value: `${proposal.min_sensitivity}%` });
+  if (proposal.design_min_conservation) items.push({ label: tx.design_min_conservation, value: String(proposal.design_min_conservation) });
+  if (proposal.degenerate_primers) items.push({ label: tx.degenerate_primers, value: tx.enabledItem });
+
+  if (items.length === 0) {
+    return <pre className="proposal-json">{JSON.stringify(proposal, null, 2)}</pre>;
+  }
+
+  return (
+    <div className="proposal-items">
+      {items.map((item) => (
+        <div key={item.label} className="proposal-item">
+          <span className="proposal-item-label">{item.label}</span>
+          <span className="proposal-item-value">{item.value}</span>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 function formatBytes(value: number) {
