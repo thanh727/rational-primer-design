@@ -450,6 +450,9 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
         path_val_stats_csv = path_master_stats
 
         if not path_val_target_csv.exists(): continue
+        if not perfect_assay_found:
+            print("   ⚠️ No assays accepted by AI or hard rules across all batches. Skipping probe design.")
+            continue
 
         # --- [STAGE 4 & 5] PROBE DESIGN & ANNOTATION (SCOPED) ---
         print("\n--- [STAGE 4] PROBE DESIGN ---")
