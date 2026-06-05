@@ -13,20 +13,25 @@ else
     echo " [1/4] Virtual environment already exists."
 fi
 
-source venv/bin/activate
+VENV_PYTHON="$DIR/venv/bin/python"
+if [ ! -x "$VENV_PYTHON" ]; then
+    echo " [ERROR] Virtual environment Python not found at $VENV_PYTHON"
+    echo "         Remove the existing venv folder and run this installer again."
+    exit 1
+fi
 
 echo " [2/4] Upgrading pip..."
-pip install --upgrade pip
+"$VENV_PYTHON" -m pip install --upgrade pip
 
 echo " [3/4] Installing libraries..."
 if [ -f "requirements.txt" ]; then
-    pip install -r requirements.txt
+    "$VENV_PYTHON" -m pip install -r requirements.txt
 else
     echo " [WARNING] requirements.txt not found!"
 fi
 
 echo " [4/4] Registering 'rational-design' command..."
-pip install -e .
+"$VENV_PYTHON" -m pip install -e .
 
 echo "========================================================"
 echo "   ✅ INSTALLATION COMPLETE!"

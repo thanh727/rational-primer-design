@@ -3,10 +3,10 @@ SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 ROOT_DIR="$( cd "$SCRIPT_DIR/.." && pwd )"
 cd "$ROOT_DIR"
 
-# Activate the virtual environment if it exists
-if [ -d "venv" ]; then
-    source venv/bin/activate
+PYTHON_BIN="$ROOT_DIR/venv/bin/python"
+if [ ! -x "$PYTHON_BIN" ]; then
+    PYTHON_BIN="python3"
 fi
 
 # Show the help menu for the CLI
-python3 -m rational_design.cli --help
+"$PYTHON_BIN" -m rational_design.cli --help

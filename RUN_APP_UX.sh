@@ -12,7 +12,7 @@ if [ ! -d "venv" ]; then
     exit 1
 fi
 
-VENV_PYTHON="./venv/bin/python3"
+VENV_PYTHON="$DIR/venv/bin/python"
 
 echo " 🚀 Launching GUI..."
-$VENV_PYTHON -m streamlit run rational_design/gui.py --theme.base="dark"
+"$VENV_PYTHON" -m streamlit run rational_design/gui.py --theme.base="dark"
