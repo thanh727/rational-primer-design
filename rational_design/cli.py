@@ -170,8 +170,9 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
         "primer_tm_min": 55.0, "primer_tm_max": 68.0,
         "product_size_min": 100, "product_size_max": 350,
         "design_min_conservation": 0.75, "min_sensitivity": 95.0, "max_mismatch": 3,
-        "enable_blast": False,  # Annotation disabled by default; opt-in only via user config
+        "enable_blast": True,
         "auto_relax_constraints": True,
+        "degenerate_primers": True,
         "max_iupac_per_primer": 2
 
     }
@@ -357,12 +358,12 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
                         backend = LocalBackend(base_url=args.ai_base_url, model_name=getattr(args, 'ai_model', 'llama3'))
                         evaluator = AssayEvaluator(backend)
                         # Generate comparative analysis report with fully calculated parameters
-                        analytical_report = generate_batch_analytical_summary(str(path_master_stats), current_params, language=getattr(args, 'language', 'vi'))
+                        analytical_report = generate_batch_analytical_summary(str(path_master_stats), current_params, language=getattr(args, 'language', 'en'))
 
                         # Pass cross-target context for Gate 4 evaluation in multiplex mode
                         report = evaluator.evaluate_candidates(
                             analytical_report,
-                            language=getattr(args, 'language', 'vi'),
+                            language=getattr(args, 'language', 'en'),
                             cross_target_context=cross_target_context if cross_target_context else None
                         )
                         if "error" not in report:
@@ -395,12 +396,12 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
 
                                     sub_stats_path = val_dir / f"sub_batch_{batch_idx}_{sub_idx}.csv"
                                     sub_candidates.to_csv(sub_stats_path, index=False)
-                                    sub_report = generate_batch_analytical_summary(str(sub_stats_path), current_params, language=getattr(args, 'language', 'vi'))
+                                    sub_report = generate_batch_analytical_summary(str(sub_stats_path), current_params, language=getattr(args, 'language', 'en'))
                                     if sub_stats_path.exists(): sub_stats_path.unlink()
 
                                     sub_result = evaluator.evaluate_candidates(
                                         sub_report,
-                                        language=getattr(args, 'language', 'vi'),
+                                        language=getattr(args, 'language', 'en'),
                                         cross_target_context=cross_target_context if cross_target_context else None
                                     )
 
@@ -1137,7 +1138,7 @@ def run_multiplex_analysis(args: argparse.Namespace) -> None:
                 f"{summary}"
             )
 
-            lang = getattr(args, 'language', 'vi')
+            lang = getattr(args, 'language', 'en')
             if lang == "en":
                 instruction = (
                     "You are a Molecular Biology Diagnostics Consultant. Evaluate the provided multiplex qPCR combinations report.\n"
@@ -1205,7 +1206,7 @@ def main():
     cmd_pipe.add_argument("--bg_config")
     cmd_pipe.add_argument("--ai_base_url", help="Local AI Base URL (e.g. http://localhost:11434/v1)")
     cmd_pipe.add_argument("--ai_model", help="Model Name (e.g. llama3)")
-    cmd_pipe.add_argument("--language", default="vi", help="Output language for AI (vi or en)")
+    cmd_pipe.add_argument("--language", default="en", help="Output language for AI (vi or en)")
     cmd_pipe.add_argument("--shared_context", default=None,
                           help="Path to shared_primer_context.json for cross-target multiplex sequential gating")
 
@@ -1226,7 +1227,7 @@ def main():
     cmd_multi.add_argument("-o", "--out", required=True, help="Thư mục đầu ra ghi báo cáo multiplex")
     cmd_multi.add_argument("--ai_base_url")
     cmd_multi.add_argument("--ai_model")
-    cmd_multi.add_argument("--language", default="vi")
+    cmd_multi.add_argument("--language", default="en")
     cmd_multi.add_argument("--assay_type", default="qPCR", choices=["qPCR", "Conventional"], help="Kiểu phản ứng Multiplex: qPCR (Probe-based) hoặc Conventional (Gel-based)")
 
     # Register terminal interactive mode

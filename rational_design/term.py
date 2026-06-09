@@ -69,9 +69,9 @@ def _get_language() -> str:
     path = CONFIG_DIR / "language.json"
     try:
         with open(path, "r", encoding="utf-8") as f:
-            return json.load(f).get("language", "vi")
+            return json.load(f).get("language", "en")
     except Exception:
-        return "vi"
+        return "en"
 
 
 def _save_language(lang: str) -> None:
@@ -836,8 +836,8 @@ def _create_params_interactive() -> Path:
     params["product_size_max"] = int(Prompt.ask("  Max product size (bp)", default="400"))
     params["max_mismatch"] = int(Prompt.ask("  Max mismatches", default="2"))
     params["validation_max_cross_reactivity"] = float(Prompt.ask("  Max cross-reactivity (%)", default="5.0"))
-    params["enable_blast"] = Confirm.ask("  Enable BLAST annotation?", default=False)
-    params["degenerate_primers"] = Confirm.ask("  Enable degenerate primers?", default=False)
+    params["enable_blast"] = Confirm.ask("  Enable BLAST annotation?", default=True)
+    params["degenerate_primers"] = Confirm.ask("  Enable degenerate primers?", default=True)
     if params["degenerate_primers"]:
         params["max_iupac_per_primer"] = int(Prompt.ask("  Max IUPAC positions per primer", default="2"))
 

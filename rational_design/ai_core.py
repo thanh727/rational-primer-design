@@ -163,7 +163,7 @@ class AssayEvaluator:
     def evaluate_candidates(
         self,
         analytical_summary: str,
-        language: str = "vi",
+        language: str = "en",
         cross_target_context: list = None
     ) -> dict:
         """
@@ -475,7 +475,7 @@ class AIExpertAgent:
             "3. Respond professionally and strictly in English."
         )
 
-    def _build_chat_payload(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> list:
+    def _build_chat_payload(self, messages_history: list, expert_report: dict = None, language: str = "en") -> list:
         """Build the full messages payload including system instruction and expert context."""
         sys_msg = self.system_instruction_en if language == "en" else self.system_instruction_vi
         if expert_report:
@@ -555,7 +555,7 @@ class AIExpertAgent:
 
         return [{"role": "system", "content": sys_msg}] + messages_history
 
-    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "vi"):
+    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "en"):
         """Send chat history to LLM and return a generator for streaming."""
         payload = self._build_chat_payload(messages_history, expert_report, language)
         response = self.backend.client.chat.completions.create(
@@ -567,7 +567,7 @@ class AIExpertAgent:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-    def chat(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> str:
+    def chat(self, messages_history: list, expert_report: dict = None, language: str = "en") -> str:
         """Chat with the AI using non-streaming completion for reliability (avoids truncation with Ollama)."""
         payload = self._build_chat_payload(messages_history, expert_report, language)
         response = self.backend.client.chat.completions.create(

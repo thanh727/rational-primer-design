@@ -542,7 +542,7 @@ const NAV: Array<{ view: WorkspaceView; href: string; icon: string }> = [
 ];
 
 export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
-  const [lang, setLang] = useState<Lang>("vi");
+  const [lang, setLang] = useState<Lang>("en");
   const [parameters, setParameters] = useState<Parameters>({});
   const [jobs, setJobs] = useState<Job[]>([]);
   const [job, setJob] = useState<Job | null>(null);

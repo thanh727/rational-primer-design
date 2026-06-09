@@ -95,7 +95,7 @@ def generate_iupac_consensus(sequences, max_iupac=None):
 
     return result
 
-def generate_batch_analytical_summary(path_master_stats, current_params, language="vi") -> str:
+def generate_batch_analytical_summary(path_master_stats, current_params, language="en") -> str:
     """
     Automatically analyze primer batches, calculate thermodynamics (Tm, GC, Tm Delta)
     and package into a highly concise analytical summary for the AI Expert.
