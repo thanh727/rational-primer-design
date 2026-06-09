@@ -352,7 +352,7 @@ def create_app() -> FastAPI:
         backend = LocalBackend(base_url=request.ai_base_url, model_name=request.ai_model)
         agent = AIExpertAgent(backend)
         messages = [{"role": m.role, "content": m.content} for m in request.messages]
-        expert_context = request.expert_context if request.expert_context is not None else _latest_expert_context()
+        expert_context = request.expert_context
         raw_reply = agent.chat(messages, expert_report=expert_context, language=request.language)
         proposal = _extract_proposal(raw_reply)
         display_reply = _strip_proposal(raw_reply) if proposal else raw_reply
@@ -536,21 +536,38 @@ def _detect_offline_models(base_url: str) -> dict[str, Any]:
             "error": "Invalid model server URL.",
         }
 
-    probes = _model_probe_urls(normalized)
     errors = []
-    for provider, url in probes:
-        try:
-            payload = _http_json(url, timeout=1.5)
-            models = _models_from_payload(provider, payload)
-            return {
-                "base_url": normalized,
-                "provider": provider,
-                "available": True,
-                "models": sorted(set(models)),
-                "error": None,
-            }
-        except Exception as exc:
-            errors.append(f"{provider}: {exc}")
+    try:
+        from openai import OpenAI
+        client = OpenAI(api_key="sk-local", base_url=normalized, timeout=5.0)
+        models = sorted({m.id for m in client.models.list().data})
+        return {
+            "base_url": normalized,
+            "provider": "openai-compatible",
+            "available": True,
+            "models": models,
+            "error": None,
+        }
+    except Exception as exc:
+        errors.append(f"openai: {exc}")
+
+    root = normalized[:-3] if normalized.endswith("/v1") else normalized
+    try:
+        from urllib.request import Request, urlopen
+        from urllib.error import URLError
+        request = Request(f"{root}/api/tags", headers={"Accept": "application/json"})
+        with urlopen(request, timeout=5.0) as response:
+            payload = json.loads(response.read().decode("utf-8"))
+        models = sorted({str(item.get("name") or item.get("model")) for item in payload.get("models", []) if item.get("name") or item.get("model")})
+        return {
+            "base_url": normalized,
+            "provider": "ollama",
+            "available": True,
+            "models": models,
+            "error": None,
+        }
+    except Exception as exc:
+        errors.append(f"ollama: {exc}")
 
     return {
         "base_url": normalized,
@@ -559,36 +576,6 @@ def _detect_offline_models(base_url: str) -> dict[str, Any]:
         "models": [],
         "error": "; ".join(errors[-2:]) if errors else "No local model server responded.",
     }
-
-
-def _model_probe_urls(base_url: str) -> list[tuple[str, str]]:
-    if base_url.endswith("/v1"):
-        root = base_url[:-3]
-        return [
-            ("openai-compatible", f"{base_url}/models"),
-            ("ollama", f"{root}/api/tags"),
-        ]
-    return [
-        ("ollama", f"{base_url}/api/tags"),
-        ("openai-compatible", f"{base_url}/v1/models"),
-        ("openai-compatible", f"{base_url}/models"),
-    ]
-
-
-def _http_json(url: str, timeout: float) -> dict[str, Any]:
-    request = Request(url, headers={"Accept": "application/json"})
-    try:
-        with urlopen(request, timeout=timeout) as response:
-            return json.loads(response.read().decode("utf-8"))
-    except URLError as exc:
-        raise RuntimeError(str(exc.reason)) from exc
-
-
-def _models_from_payload(provider: str, payload: dict[str, Any]) -> list[str]:
-    if provider == "ollama":
-        return [str(item.get("name") or item.get("model")) for item in payload.get("models", []) if item.get("name") or item.get("model")]
-    data = payload.get("data", [])
-    return [str(item.get("id")) for item in data if isinstance(item, dict) and item.get("id")]
 
 
 def _new_job_dirs(output_name: str | None) -> tuple[str, Path, Path]:

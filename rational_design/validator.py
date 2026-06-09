@@ -1,6 +1,7 @@
 import csv
 import multiprocessing
 import os
+import sys
 from collections import defaultdict
 
 import Levenshtein
@@ -235,7 +236,12 @@ class InSilicoValidator:
             batch_tasks = [(sid, strain_data[sid]) for sid in batch_sids]
             ctx = multiprocessing.get_context("spawn")
             with ctx.Pool(cpu, initializer=init_worker, initargs=(pairs,), maxtasksperchild=1) as pool:
-                results = pool.map(run_pcr_on_single_strain, batch_tasks)
+                try:
+                    results = pool.map(run_pcr_on_single_strain, batch_tasks)
+                except KeyboardInterrupt:
+                    pool.terminate()
+                    print("\n   ⚠️ Validation interrupted by user.")
+                    sys.exit(1)
             with open(out_csv, "a", newline="") as f:
                 writer = csv.writer(f)
                 for res_list in results:

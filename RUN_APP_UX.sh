@@ -14,5 +14,5 @@ fi
 
 VENV_PYTHON="$DIR/venv/bin/python"
 
-echo " 🚀 Launching GUI..."
-"$VENV_PYTHON" -m streamlit run rational_design/gui.py --theme.base="dark"
+echo " 🚀 Launching Terminal Wizard..."
+"$VENV_PYTHON" -m rational_design.cli term

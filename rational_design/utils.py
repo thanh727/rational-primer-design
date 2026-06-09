@@ -20,7 +20,10 @@ class DualLogger(object):
         self.terminal = sys.stdout
         self.log = open(filename, "w", encoding='utf-8')
     def write(self, message):
-        self.terminal.write(message)
+        try:
+            self.terminal.write(message)
+        except UnicodeEncodeError:
+            self.terminal.write(message.encode(self.terminal.encoding, errors='replace').decode(self.terminal.encoding))
         self.log.write(message)
         self.log.flush()
     def flush(self):

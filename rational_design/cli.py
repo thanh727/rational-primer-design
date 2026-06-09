@@ -373,18 +373,102 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
                             with open(report_path, "w", encoding="utf-8") as rf:
                                 json.dump(report, rf, ensure_ascii=False, indent=4)
 
+                            # --- SHARED SUB-BATCH RETRY LOGIC (used by both REJECT and GATE 4 failure) ---
+                            def _try_sub_batches() -> bool:
+                                """Try remaining validated candidates in sub-batches of 10, up to 3 times. Returns True if accepted."""
+                                df_sorted = df_stats.sort_values(by=['Sensitivity_Percent', 'Tm_Delta'], ascending=[False, True])
+                                sub_batch_size = 10
+                                max_sub_batches = 3
+
+                                for sub_idx in range(max_sub_batches):
+                                    start = 15 + sub_idx * sub_batch_size
+                                    end = start + sub_batch_size
+                                    sub_candidates = df_sorted.iloc[start:end]
+
+                                    if sub_candidates.empty:
+                                        print(f"      No more candidates to check after position {start}.")
+                                        break
+
+                                    sub_stats_path = val_dir / f"sub_batch_{batch_idx}_{sub_idx}.csv"
+                                    sub_candidates.to_csv(sub_stats_path, index=False)
+                                    sub_report = generate_batch_analytical_summary(str(sub_stats_path), current_params, language=getattr(args, 'language', 'vi'))
+                                    if sub_stats_path.exists(): sub_stats_path.unlink()
+
+                                    sub_result = evaluator.evaluate_candidates(
+                                        sub_report,
+                                        language=getattr(args, 'language', 'vi'),
+                                        cross_target_context=cross_target_context if cross_target_context else None
+                                    )
+
+                                    if "error" not in sub_result and sub_result.get('next_action') == "ACCEPT_AND_STOP":
+                                        print(f"      ✅ Sub-batch {sub_idx+1}/{max_sub_batches} ACCEPTED by AI!")
+                                        gate4_ok = not cross_target_context
+                                        if cross_target_context:
+                                            try:
+                                                from .multiplex import check_cross_target_compatibility
+                                                top_3 = sub_result.get('top_3_assays', [])
+                                                df_check = pd.read_csv(path_master_stats)
+                                                id_col = 'Set_ID' if 'Set_ID' in df_check.columns else 'Primer Pair'
+                                                best_candidate = None
+                                                if top_3:
+                                                    clean_id = str(top_3[0]).split()[0].strip()
+                                                    match = df_check[df_check[id_col] == clean_id]
+                                                    if not match.empty:
+                                                        row = match.iloc[0]
+                                                        best_candidate = {
+                                                            "Fwd_Primer": row.get('Forward Primer', ''),
+                                                            "Rev_Primer": row.get('Reverse Primer', ''),
+                                                            "Probe_Seq": row.get('Probe_Seq', 'N/A'),
+                                                            "Target_Name": row.get('Target_Name', 'Current')
+                                                        }
+                                                if not best_candidate and not df_check.empty:
+                                                    row = df_check.iloc[0]
+                                                    best_candidate = {
+                                                        "Fwd_Primer": row.get('Forward Primer', ''),
+                                                        "Rev_Primer": row.get('Reverse Primer', ''),
+                                                        "Probe_Seq": row.get('Probe_Seq', 'N/A'),
+                                                        "Target_Name": 'Current'
+                                                    }
+                                                if best_candidate:
+                                                    existing_assays = [{
+                                                        "Fwd_Primer": c.get("Fwd_Primer", ""),
+                                                        "Rev_Primer": c.get("Rev_Primer", ""),
+                                                        "Probe_Seq": c.get("Probe_Seq", "N/A"),
+                                                        "Target_Name": c.get("target_name", "")
+                                                    } for c in (cross_target_context or [])]
+                                                    compat = check_cross_target_compatibility(
+                                                        best_candidate, existing_assays,
+                                                        assay_type="qPCR", tm_span_threshold=4.0
+                                                    )
+                                                    gate4_ok = compat["compatible"]
+                                                    if not gate4_ok:
+                                                        print(f"      🚨 Sub-batch GATE 4 FAILED — continuing...")
+                                                        for issue in compat["all_issues"]:
+                                                            print(f"         {issue}")
+                                                    else:
+                                                        print(f"      ✅ Sub-batch GATE 4 PASSED (Tm span={compat['tm_span']}°C)")
+                                            except Exception as gate4_err:
+                                                print(f"      ⚠️ Sub-batch Gate 4 check error (non-fatal): {gate4_err}")
+
+                                        if gate4_ok:
+                                            with open(report_path, "w", encoding="utf-8") as rf:
+                                                json.dump(sub_result, rf, ensure_ascii=False, indent=4)
+                                            return True
+                                    else:
+                                        r = sub_result.get('clinical_recommendation', sub_result.get('error', 'Unknown')) if "error" not in sub_result else sub_result.get('error')
+                                        print(f"      ⚠️ Sub-batch {sub_idx+1}/{max_sub_batches} rejected: {str(r)[:120]}")
+
+                                return False
+
                             if report.get('next_action') == "ACCEPT_AND_STOP":
                                 # --- GATE 4 HARD CHECK (Python-level, bypasses AI hallucination) ---
+                                gate4_failed = False
                                 if cross_target_context:
                                     try:
                                         from .multiplex import check_cross_target_compatibility
-                                        # Get the top accepted assay from current batch for compatibility check
                                         top_3 = report.get('top_3_assays', [])
                                         df_check = pd.read_csv(path_master_stats)
-                                        # Normalize: master_pcr_results_summary uses 'Primer Pair' (from validator)
-                                        # while FINAL_ASSAY uses 'Set_ID' (from prober). Support both.
                                         id_col = 'Set_ID' if 'Set_ID' in df_check.columns else 'Primer Pair'
-                                        # Find the best candidate to check
                                         best_candidate = None
                                         if top_3:
                                             clean_id = str(top_3[0]).split()[0].strip()
@@ -398,7 +482,6 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
                                                     "Target_Name": row.get('Target_Name', 'Current')
                                                 }
                                         if not best_candidate and not df_check.empty:
-
                                             row = df_check.iloc[0]
                                             best_candidate = {
                                                 "Fwd_Primer": row.get('Forward Primer', ''),
@@ -407,7 +490,6 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
                                                 "Target_Name": 'Current'
                                             }
                                         if best_candidate:
-                                            # Map context dicts to assay format for compatibility check
                                             existing_assays = [{
                                                 "Fwd_Primer": c.get("Fwd_Primer", ""),
                                                 "Rev_Primer": c.get("Rev_Primer", ""),
@@ -419,22 +501,30 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
                                                 assay_type="qPCR", tm_span_threshold=4.0
                                             )
                                             if not compat["compatible"]:
-                                                print(f"   🚨 GATE 4 FAILED (Python hard check) — Cross-target incompatibility detected!")
+                                                print(f"   🚨 GATE 4 FAILED (Python hard check) — Cross-target incompatibility!")
                                                 for issue in compat["all_issues"]:
                                                     print(f"      {issue}")
-                                                print(f"   ➡️ Forcing REJECT_AND_CONTINUE to find compatible primer set...")
-                                                continue  # Force next batch
+                                                gate4_failed = True
                                             else:
                                                 print(f"   ✅ GATE 4 PASSED: Cross-target Tm span={compat['tm_span']}°C, no fatal dimers.")
                                     except Exception as gate4_err:
                                         print(f"   ⚠️ Gate 4 check error (non-fatal): {gate4_err}")
 
-                                print(f"   ✨ AI ACCEPTED primers. Triggering Early Stopping!")
+                                if not gate4_failed:
+                                    print(f"   ✨ AI ACCEPTED primers. Triggering Early Stopping!")
+                                    perfect_assay_found = True
+                                    break
+                                else:
+                                    print(f"   ➡️ GATE 4 forced reject — checking subsequent candidates...")
+
+                                # Fall through to sub-batch retry when GATE 4 fails
+                            else:
+                                print(f"   ⚠️ AI REJECTED primers. Checking subsequent candidates in sub-batches of 10...")
+
+                            if _try_sub_batches():
+                                print(f"   ✨ AI ACCEPTED via sub-batch retry. Triggering Early Stopping!")
                                 perfect_assay_found = True
                                 break
-                            elif report.get('next_action') == "REJECT_AND_CONTINUE":
-                                print(f"   ⚠️ AI REJECTED primers. Requesting next batch...")
-                                continue
                         else:
                             print(f"   ❌ AI Error: {report.get('error')}")
                     except Exception as e:
@@ -1135,6 +1225,9 @@ def main():
     cmd_multi.add_argument("--language", default="vi")
     cmd_multi.add_argument("--assay_type", default="qPCR", choices=["qPCR", "Conventional"], help="Kiểu phản ứng Multiplex: qPCR (Probe-based) hoặc Conventional (Gel-based)")
 
+    # Register terminal interactive mode
+    subparsers.add_parser("term", help="Interactive terminal wizard")
+
     args = parser.parse_args()
     if args.command == "pipeline":
         run_full_pipeline(args)
@@ -1146,6 +1239,9 @@ def main():
         run_advanced_pcr()
     elif args.command == "multiplex_analyze":
         run_multiplex_analysis(args)
+    elif args.command == "term":
+        from .term import main as run_terminal
+        run_terminal()
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

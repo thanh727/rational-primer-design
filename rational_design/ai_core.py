@@ -475,8 +475,8 @@ class AIExpertAgent:
             "3. Respond professionally and strictly in English."
         )
 
-    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "vi"):
-        """Send chat history to LLM and return a generator for streaming."""
+    def _build_chat_payload(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> list:
+        """Build the full messages payload including system instruction and expert context."""
         sys_msg = self.system_instruction_en if language == "en" else self.system_instruction_vi
         if expert_report:
             if language == "en":
@@ -485,7 +485,6 @@ class AIExpertAgent:
                 sys_msg += "\n\nQUAN TRỌNG: Giai đoạn thực thi thuật toán đã hoàn thành. Dưới đây là KẾT QUẢ CHI TIẾT (Bộ mồi thiết kế & Báo cáo Chuyên gia AI). Hãy dùng đây là nguồn sự thật duy nhất để trả lời mọi câu hỏi phân tích và thực nghiệm của người dùng:\n"
             import json
 
-            # --- Inject Cross-Contamination Traceback as a dedicated, clearly-labelled section ---
             xc = expert_report.get("cross_contamination_traceback")
             if xc:
                 if language == "en":
@@ -547,11 +546,18 @@ class AIExpertAgent:
                             sys_msg += f"  - {o['primer_pair']}: ảnh hưởng {o['cross_reactive_strain_count']} chủng\n"
                     sys_msg += "============================================================\n"
 
-            # Append the full expert_report JSON for detailed queries
-            sys_msg += "\n--- Full Expert Report JSON ---\n"
-            sys_msg += json.dumps(expert_report, ensure_ascii=False, indent=2)
-            
-        payload = [{"role": "system", "content": sys_msg}] + messages_history
+            json_report = json.dumps(expert_report, ensure_ascii=False, indent=2)
+            MAX_CONTEXT_CHARS = 12000
+            if len(json_report) > MAX_CONTEXT_CHARS:
+                json_report = json_report[:MAX_CONTEXT_CHARS] + "\n... [TRUNCATED]"
+            sys_msg += "\n--- Expert Report JSON ---\n"
+            sys_msg += json_report
+
+        return [{"role": "system", "content": sys_msg}] + messages_history
+
+    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "vi"):
+        """Send chat history to LLM and return a generator for streaming."""
+        payload = self._build_chat_payload(messages_history, expert_report, language)
         response = self.backend.client.chat.completions.create(
             model=self.backend.model_name,
             messages=payload,
@@ -561,7 +567,11 @@ class AIExpertAgent:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-
     def chat(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> str:
-        """Fallback non-streaming chat."""
-        return "".join(list(self.chat_stream(messages_history, expert_report, language)))
+        """Chat with the AI using non-streaming completion for reliability (avoids truncation with Ollama)."""
+        payload = self._build_chat_payload(messages_history, expert_report, language)
+        response = self.backend.client.chat.completions.create(
+            model=self.backend.model_name,
+            messages=payload
+        )
+        return response.choices[0].message.content or ""

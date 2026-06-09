@@ -14,12 +14,12 @@ if not exist "venv\" (
 
 set PYTHON_EXE=venv\Scripts\python.exe
 
-echo Launching GUI...
-%PYTHON_EXE% -m streamlit run rational_design/gui.py --theme.base="dark"
+echo Launching Terminal Wizard...
+%PYTHON_EXE% -m rational_design.cli term
 
 if %errorlevel% neq 0 (
     echo.
-    echo [ERROR] The app crashed or closed unexpectedly.
+    echo [ERROR] The CLI crashed or closed unexpectedly.
 )
 
 pause

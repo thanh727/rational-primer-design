@@ -128,7 +128,7 @@ type StatusPayload = {
   ai: OfflineModelsResponse;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://127.0.0.1:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
 
 const I18N: Record<Lang, Record<string, string>> = {
   vi: {
@@ -592,20 +592,22 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   useEffect(() => {
     void loadDefaults();
     void refreshJobs();
-    void detectOfflineModels();
     const savedLanguage = window.localStorage.getItem("rpd-language");
     if (savedLanguage === "vi" || savedLanguage === "en") setLang(savedLanguage);
     const savedRememberEmail = window.localStorage.getItem("rpd-remember-email") === "1";
     setRememberEmail(savedRememberEmail);
     if (savedRememberEmail) setEmail(window.localStorage.getItem("rpd-ncbi-email") ?? "");
-    setAiBaseUrl(window.localStorage.getItem("rpd-ai-base-url") ?? "http://localhost:11434/v1");
-    setAiModel(window.localStorage.getItem("rpd-ai-model") ?? "llama3");
+    const savedAiBaseUrl = window.localStorage.getItem("rpd-ai-base-url") ?? "http://localhost:11434/v1";
+    const savedAiModel = window.localStorage.getItem("rpd-ai-model") ?? "llama3";
+    setAiBaseUrl(savedAiBaseUrl);
+    setAiModel(savedAiModel);
     setOutputName(window.localStorage.getItem("rpd-output-name") ?? "primer-design-run");
     setLocalTarget(window.localStorage.getItem("rpd-local-target") ?? "");
     setLocalBackground(window.localStorage.getItem("rpd-local-background") ?? "");
     setValidationTarget(window.localStorage.getItem("rpd-validation-target") ?? "");
     setValidationBackground(window.localStorage.getItem("rpd-validation-background") ?? "");
     setMultiplexBackground(window.localStorage.getItem("rpd-multiplex-background") ?? "");
+    void detectOfflineModels(savedAiBaseUrl, savedAiModel);
   }, []);
 
   useEffect(() => {
@@ -647,7 +649,9 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
     });
   }, [lang]);
 
+  const didMount = useRef(false);
   useEffect(() => {
+    if (!didMount.current) { didMount.current = true; return; }
     const timer = window.setTimeout(() => {
       void detectOfflineModels();
       void refreshStatus();
@@ -721,25 +725,27 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
     }
   }
 
-  async function refreshStatus() {
+  async function refreshStatus(baseUrlOverride?: string) {
     try {
-      setStatus(await api<StatusPayload>(`/api/status?ai_base_url=${encodeURIComponent(aiBaseUrl)}`));
+      setStatus(await api<StatusPayload>(`/api/status?ai_base_url=${encodeURIComponent(baseUrlOverride ?? aiBaseUrl)}`));
     } catch {
       setStatus(null);
     }
   }
 
-  async function detectOfflineModels() {
+  async function detectOfflineModels(baseUrlOverride?: string, currentModel?: string) {
+    const url = baseUrlOverride ?? aiBaseUrl;
+    const model = currentModel ?? aiModel;
     try {
-      const models = await api<OfflineModelsResponse>(`/api/ai/models?base_url=${encodeURIComponent(aiBaseUrl)}`);
-      setOfflineModels(models);
-      if (models.models.length > 0 && (!aiModel || aiModel === "llama3")) {
-        setAiModel(models.models[0]);
+      const response = await api<OfflineModelsResponse>(`/api/ai/models?base_url=${encodeURIComponent(url)}`);
+      setOfflineModels(response);
+      if (response.models.length > 0 && (!model || model === "llama3")) {
+        setAiModel(response.models[0]);
       }
-      void refreshStatus();
+      void refreshStatus(url);
     } catch (err) {
       setOfflineModels({
-        base_url: aiBaseUrl,
+        base_url: url,
         provider: "unknown",
         available: false,
         models: [],
