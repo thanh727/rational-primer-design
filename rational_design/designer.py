@@ -9,6 +9,7 @@ import gc
 import array
 import os
 import math
+import sys
 
 # --- SYSTEM OPTIMIZATION ---
 gc.set_threshold(100, 10, 10)
@@ -154,8 +155,13 @@ class PrimerDesigner:
 
             with multiprocessing.Pool(self.cpu) as pool:
                 tasks = [(sid, seqs, self.k, k_step, min_copy) for sid, seqs in target_strains.items()]
-                for arr in pool.imap_unordered(intra_strain_pairing_worker, tasks):
-                    target_pool.update(arr)
+                try:
+                    for arr in pool.imap_unordered(intra_strain_pairing_worker, tasks):
+                        target_pool.update(arr)
+                except KeyboardInterrupt:
+                    pool.terminate()
+                    print("\n   ⚠️ Design interrupted by user.")
+                    sys.exit(1)
 
             base_cons_ratio = self.params.get("design_min_conservation", 0.75)
             min_cons = int(len(target_strains) * base_cons_ratio)
@@ -187,8 +193,13 @@ class PrimerDesigner:
                 with multiprocessing.Pool(self.cpu) as pool:
                     bg_step = max(1, k_step // 2)
                     tasks = [(sid, seqs, self.k, elite_frozen, bg_step) for sid, seqs in bg_strains.items()]
-                    for arr in pool.imap_unordered(self._targeted_kmer_worker, tasks):
-                        bg_blacklist.update(arr)
+                    try:
+                        for arr in pool.imap_unordered(self._targeted_kmer_worker, tasks):
+                            bg_blacklist.update(arr)
+                    except KeyboardInterrupt:
+                        pool.terminate()
+                        print("\n   ⚠️ Design interrupted by user.")
+                        sys.exit(1)
 
                 elite_targets = elite_targets - bg_blacklist
                 print(f"      > Remaining {len(elite_targets)} clean primers.")
@@ -227,14 +238,90 @@ class PrimerDesigner:
         return array.array('Q', sorted(list(found_hashes)))
 
     def _load_fastas(self, input_path):
+        """Load FASTA data using the project contract: 1 FASTA file = 1 strain.
+
+        Important:
+        - When input_path is a directory, every FASTA file inside that directory is
+          treated as one strain, regardless of how many contigs/records are inside
+          the file. The strain ID is therefore the FASTA filename stem.
+        - Record IDs inside each FASTA are treated only as contig IDs and must NOT
+          redefine strain identity. This avoids collapsing many files into one
+          strain when contig headers contain a shared prefix or a pipe symbol.
+        - When input_path is a single FASTA file (e.g., the merged output from
+          LibraryConstructor), record IDs follow the "strain|contig" convention
+          produced by the constructor. These are split by '|' to recover per-strain
+          identity. Files without '|' in record IDs are treated as one strain
+          (filename = strain ID).
+        """
         data = defaultdict(list)
-        if not input_path or not os.path.exists(input_path): return data
-        files = [os.path.join(input_path, f) for f in os.listdir(input_path)
-                 if f.lower().endswith(('.fasta', '.fa', '.fna', '.fas'))] if os.path.isdir(input_path) else [input_path]
-        for f in files:
-            for r in SeqIO.parse(f, "fasta"):
-                sid = r.id.split('|')[0] if r.id and '|' in r.id else os.path.basename(f)
-                data[sid].append(str(r.seq).upper())
+        fasta_exts = ('.fasta', '.fa', '.fna', '.fas')
+
+        if not input_path or not os.path.exists(input_path):
+            print(f"   ⚠️ FASTA input not found: {input_path}")
+            return data
+
+        input_path = os.path.abspath(str(input_path))
+
+        if os.path.isdir(input_path):
+            files = sorted(
+                os.path.join(input_path, f)
+                for f in os.listdir(input_path)
+                if f.lower().endswith(fasta_exts)
+            )
+
+            print(
+                f"   📂 Loading FASTA folder: {input_path} "
+                f"({len(files)} FASTA file(s); 1 file = 1 strain)"
+            )
+
+            for f in files:
+                sid = os.path.splitext(os.path.basename(f))[0]
+                contigs = 0
+                total_bp = 0
+                try:
+                    for r in SeqIO.parse(f, "fasta"):
+                        seq = str(r.seq).upper()
+                        if not seq:
+                            continue
+                        data[sid].append(seq)
+                        contigs += 1
+                        total_bp += len(seq)
+                except Exception as e:
+                    print(f"      ❌ Error parsing {os.path.basename(f)}: {e}")
+                    continue
+
+                if contigs == 0:
+                    data.pop(sid, None)
+                    print(f"      ⚠️ Empty FASTA skipped: {os.path.basename(f)}")
+                else:
+                    print(
+                        f"      ✅ {sid}: loaded 1 strain from {os.path.basename(f)} "
+                        f"({contigs} contig(s), {total_bp/1_000_000:.2f} Mb)."
+                    )
+
+            print(f"   ✅ Detected {len(data)} strain(s) from folder: {input_path}")
+            return data
+
+        # Single FASTA file input (e.g., merged output from constructor).
+        # The constructor always formats IDs as "strain|contig", so we split
+        # by '|' to recover per-strain identity. If no '|' is present, the
+        # entire file is treated as one strain (filename = strain ID).
+        default_sid = os.path.splitext(os.path.basename(input_path))[0]
+
+        print(f"   📄 Loading single FASTA file: {input_path}")
+
+        try:
+            for r in SeqIO.parse(input_path, "fasta"):
+                seq = str(r.seq).upper()
+                if not seq:
+                    continue
+                sid = r.id.split('|', 1)[0] if r.id and '|' in r.id else default_sid
+                data[sid].append(seq)
+        except Exception as e:
+            print(f"      ❌ Error parsing {os.path.basename(input_path)}: {e}")
+            return data
+
+        print(f"   ✅ Detected {len(data)} strain(s) from single FASTA input: {os.path.basename(input_path)}")
         return data
 
     def _extract_raw_pairs(self, elite_hashes, target_strains):
@@ -283,7 +370,12 @@ class PrimerDesigner:
         if not all_raw_pairs: return
         flat_tg = [(sid, s) for sid, seqs in target_strains.items() for s in seqs]
         with multiprocessing.Pool(self.cpu, initializer=init_worker, initargs=(flat_tg,)) as p:
-            results = p.map(self._final_score_worker, all_raw_pairs)
+            try:
+                results = p.map(self._final_score_worker, all_raw_pairs)
+            except KeyboardInterrupt:
+                p.terminate()
+                print("\n   ⚠️ Design interrupted by user.")
+                sys.exit(1)
 
         final_list = []
         for i, (p, res) in enumerate(zip(all_raw_pairs, results)):

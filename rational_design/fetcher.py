@@ -77,6 +77,11 @@ class SequenceFetcher:
                     retmode="text",
                 ) as handle:
                     return list(SeqIO.parse(handle, "fasta"))
+            except KeyboardInterrupt:
+                attempt += 1
+                if attempt < self.max_retries:
+                    print(f"      ⚠️ Download interrupted, retrying ({attempt}/{self.max_retries})...")
+                    time.sleep(2 * attempt)
             except Exception as e:
                 attempt += 1
                 time.sleep(2 * attempt) # Exponential backoff
@@ -84,34 +89,40 @@ class SequenceFetcher:
 
     def _auto_detect_genome_size(self, base_query: str) -> float:
         """Fetches up to 20 records to find the median genome size and returns 50% of it."""
-        try:
-            handle = Entrez.esearch(
-                db="nucleotide",
-                term=base_query,
-                rettype="gb",
-                retmode="text",
-                retmax=20,
-            )
-            record = Entrez.read(handle)
-            handle.close()
-            ids = record["IdList"]
-            if not ids:
-                return 0.0
+        for attempt in range(2):
+            try:
+                handle = Entrez.esearch(
+                    db="nucleotide",
+                    term=base_query,
+                    rettype="gb",
+                    retmode="text",
+                    retmax=20,
+                )
+                record = Entrez.read(handle)
+                handle.close()
+                ids = record["IdList"]
+                if not ids:
+                    return 0.0
 
-            with Entrez.efetch(
-                db="nucleotide",
-                id=ids,
-                rettype="fasta",
-                retmode="text",
-            ) as handle:
-                recs = list(SeqIO.parse(handle, "fasta"))
-                if not recs: return 0.0
-                lengths = sorted([len(r.seq) for r in recs])
-                median_len = lengths[len(lengths) // 2]
-                return median_len / 1_000_000 # Return median in Mb
-        except Exception as e:
-            print(f"      ❌ Auto-detect failed: {e}")
-            return 0.0
+                with Entrez.efetch(
+                    db="nucleotide",
+                    id=ids,
+                    rettype="fasta",
+                    retmode="text",
+                ) as handle:
+                    recs = list(SeqIO.parse(handle, "fasta"))
+                    if not recs: return 0.0
+                    lengths = sorted([len(r.seq) for r in recs])
+                    median_len = lengths[len(lengths) // 2]
+                    return median_len / 1_000_000 # Return median in Mb
+            except KeyboardInterrupt:
+                print(f"      ⚠️ Auto-detect interrupted (attempt {attempt+1}/2). Retrying...")
+                time.sleep(1)
+            except Exception as e:
+                print(f"      ❌ Auto-detect failed: {e}")
+                return 0.0
+        print(f"      ⚠️ Auto-detect failed after retries. Proceeding without size filter.")
+        return 0.0
 
     def fetch_and_save_all(
         self,

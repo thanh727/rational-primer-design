@@ -34,30 +34,19 @@ class LibraryConstructor:
 
         print(f"   ➡ {stage.capitalize()} - {path.name}: Found {len(all_files)} files.")
 
-        # Group files by name_key (e.g. t1, b1)
-        groups = {}
-        for f in all_files:
-            name_key = f.stem.rsplit('_', 1)[0] if '_' in f.stem else f.stem
-            groups.setdefault(name_key, []).append(f)
-
         final_records = []
-        for name_key, files in groups.items():
-            group_records = []
-            for f in files:
-                try:
-                    seqs = list(SeqIO.parse(f, "fasta"))
-                    for r in seqs:
-                        r.id = f"{f.stem}|{r.id}"
-                        group_records.append(r)
-                except Exception as e:
-                    print(f"      ❌ Error parsing {f.name}: {e}")
-                    continue
+        for f in all_files:
+            try:
+                seqs = list(SeqIO.parse(f, "fasta"))
+                for r in seqs:
+                    r.id = f"{f.stem}|{r.id}"
+                    final_records.append(r)
+            except Exception as e:
+                print(f"      ❌ Error parsing {f.name}: {e}")
+                continue
 
-            if not group_records: continue
-
-            avg_len_mb = sum(len(r.seq) for r in group_records) / len(group_records) / 1_000_000
-            print(f"      ✅ {name_key} (avg {avg_len_mb:.2f} MB): Loaded {len(group_records)} strain record(s).")
-            final_records.extend(group_records)
+            avg_len_mb = sum(len(r.seq) for r in seqs) / len(seqs) / 1_000_000 if seqs else 0
+            print(f"      ✅ {f.stem} ({len(seqs)} contig(s), avg {avg_len_mb:.2f} MB): Loaded 1 strain.")
 
         limit = max(0, int(n_strains or 0))
         if limit > 0 and len(final_records) > limit:
