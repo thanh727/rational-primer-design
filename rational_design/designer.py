@@ -20,7 +20,17 @@ def init_worker(genome_tuples):
     global WORKER_GENOMES
     WORKER_GENOMES = genome_tuples
 
-DNA_MAP = {'A': 0, 'C': 1, 'G': 2, 'T': 3, 'a': 0, 'c': 1, 'g': 2, 't': 3}
+DNA_MAP = bytearray(256)
+DNA_MAP[:] = b'\xff' * 256
+DNA_MAP[65] = DNA_MAP[97] = 0   # A/a
+DNA_MAP[67] = DNA_MAP[99] = 1   # C/c
+DNA_MAP[71] = DNA_MAP[103] = 2  # G/g
+DNA_MAP[84] = DNA_MAP[116] = 3  # T/t
+
+
+def _is_degenerate(seq):
+    """Check if a sequence contains IUPAC degenerate codes."""
+    return any(base not in "ATGC" for base in str(seq).upper())
 
 
 def is_low_complexity_sequence(seq):
@@ -34,7 +44,7 @@ def is_low_complexity_sequence(seq):
     return False
 
 def is_bio_safe(h, k):
-    """Check PCR primer standards on bit-packed h."""
+    """Check PCR primer standards on bit-packed h (LSB = 3' end)."""
     gc_count = 0
     consecutive = 1
     last_base = -1
@@ -50,11 +60,9 @@ def is_bio_safe(h, k):
         else:
             consecutive = 1
         last_base = base
-        if i == 0 and (base == 0 or base == 3):
-            return False
         temp_h >>= 2
 
-    if not (0.4 * k <= gc_count <= 0.65 * k):
+    if not (0.4 * k <= gc_count <= 0.75 * k):
         return False
     return True
 
@@ -73,7 +81,7 @@ def calculate_entropy(h, k):
             entropy -= p * math.log2(p)
     return entropy
 
-# --- MAIN WORKER: INTRA-STRAIN PAIRING (STRIDE OPTIMIZED) ---
+# --- MAIN WORKER: INTRA-STRAIN PAIRING (EXHAUSTIVE SCAN) ---
 def intra_strain_pairing_worker(args):
     """
     Intra-strain process (Stage 2 - Phase 1):
@@ -83,20 +91,21 @@ def intra_strain_pairing_worker(args):
     valid_hashes = set()
     hash_counts = Counter()
     mask = (1 << (2 * k)) - 1
-    step = max(1, int(step)) # Ensure step is at least 1
 
+    total_windows = 0
     for seq in sequences:
         seq = seq.upper()
         n = len(seq)
 
-        # Stride processing
-        for i in range(0, n - k + 1, step):
+        # Exhaustive scan (stride=1)
+        for i in range(0, n - k + 1):
+            total_windows += 1
             sub = seq[i : i + k]
 
             h = 0
             for char in sub:
-                val = DNA_MAP.get(char, -1)
-                if val == -1:
+                val = DNA_MAP[ord(char)]
+                if val == 0xFF:
                     h = -1
                     break
                 h = (h << 2) | val
@@ -104,7 +113,7 @@ def intra_strain_pairing_worker(args):
             h &= mask
 
             # Filter valid primers & Per-strain filter
-            if is_bio_safe(h, k) and calculate_entropy(h, k) >= 1.6 and not is_low_complexity_sequence(sub):
+            if is_bio_safe(h, k) and calculate_entropy(h, k) >= 1.4 and not is_low_complexity_sequence(sub):
                 if min_copy > 1:
                     hash_counts[h] += 1
                     if hash_counts[h] >= min_copy:
@@ -112,7 +121,7 @@ def intra_strain_pairing_worker(args):
                 else:
                     valid_hashes.add(h)
 
-    return array.array('Q', sorted(list(valid_hashes)))
+    return (sid, array.array('Q', sorted(list(valid_hashes))), total_windows)
 
 class PrimerDesigner:
     def __init__(self, params):
@@ -132,66 +141,84 @@ class PrimerDesigner:
         print(f"--- 🚀 V-EXTREME DESIGNER: Population Genomics Mode ---")
         t_start = time.time()
 
-        # Get step from config, default is 3 (3x speedup)
-        k_step = int(self.params.get("kmer_step", 3))
-
         target_strains = self._load_fastas(target_input)
         bg_strains = self._load_fastas(bg_input)
 
-        # Auto-adjust k_step based on data size to prevent freezing
         total_bases = sum(len(seq) for seqs in target_strains.values() for seq in seqs)
+        print(f"   📊 Target: {len(target_strains)} strains, {total_bases/1e6:.1f} Mb")
+        if bg_strains:
+            bg_bases = sum(len(seq) for seqs in bg_strains.values() for seq in seqs)
+            print(f"   📊 Background: {len(bg_strains)} strains, {bg_bases/1e6:.1f} Mb")
+        print()
 
-        target_max_p = 0
+        base_cons_ratio = self.params.get("design_min_conservation", 0.75)
+        min_copy = int(self.params.get("min_intra_strain_copy", 1))
 
         all_raw_pairs = []
         for current_k in range(self.k_min, self.k_max + 1):
             self.k = current_k
-            print(f"   --- Primer size k={self.k} ---")
+            k_t = time.time()
+            print(f"   ┌─ k={self.k} ─────────────────────────────┐")
 
-            # PHASE 1: MINING TARGET PAIRS
-            print(f"   [Phase 1] Mining Target Pairs ({len(target_strains)} strains) with Step={k_step}...")
+            # ── PHASE 1 ──
+            print(f"   │ [Phase 1] Mining {len(target_strains)} strains (stride=1, exhaustive)")
             target_pool = Counter()
-            min_copy = int(self.params.get("min_intra_strain_copy", 1))
+            total_windows_all = 0
 
             with multiprocessing.Pool(self.cpu) as pool:
-                tasks = [(sid, seqs, self.k, k_step, min_copy) for sid, seqs in target_strains.items()]
+                tasks = [(sid, seqs, self.k, 1, min_copy) for sid, seqs in target_strains.items()]
                 try:
-                    for arr in pool.imap_unordered(intra_strain_pairing_worker, tasks):
+                    for result in pool.imap_unordered(intra_strain_pairing_worker, tasks):
+                        sid, arr, n_windows = result
                         target_pool.update(arr)
+                        total_windows_all += n_windows
                 except KeyboardInterrupt:
                     pool.terminate()
                     print("\n   ⚠️ Design interrupted by user.")
                     sys.exit(1)
 
-            base_cons_ratio = self.params.get("design_min_conservation", 0.75)
             min_cons = int(len(target_strains) * base_cons_ratio)
+            before_cons = len(target_pool)
 
-            # Filter k-mers based on initial threshold
-            valid_kmers = {h: count for h, count in target_pool.items() if count >= min_cons}
+            degenerate = self.params.get("degenerate_primers", False)
+            valid_kmers = {}
+            for h, count in target_pool.items():
+                if count >= min_cons:
+                    valid_kmers[h] = count
+                elif degenerate:
+                    family = count
+                    for pos in range(self.k):
+                        shift = 2 * pos
+                        mask = 3 << shift
+                        base = (h >> shift) & 3
+                        for alt in range(4):
+                            if alt != base:
+                                vh = (h & ~mask) | (alt << shift)
+                                if vh in target_pool:
+                                    family += target_pool[vh]
+                    if family >= min_cons:
+                        valid_kmers[h] = count
 
-            # Dynamic Filtering: Limit to max 50,000 k-mers to save RAM & CPU
+            # Dynamic Filtering: Limit to max 50,000 k-mers
             MAX_ELITE = 50000
             if len(valid_kmers) > MAX_ELITE:
-                # Sort by frequency descending
                 sorted_kmers = sorted(valid_kmers.items(), key=lambda x: x[1], reverse=True)
                 elite_targets = set(h for h, count in sorted_kmers[:MAX_ELITE])
             else:
                 elite_targets = set(valid_kmers.keys())
 
-            print(f"      > Pushing {len(elite_targets)} elite K-mers to Phase 2.")
-
-            # Explicit memory cleanup
-            del target_pool
-            del valid_kmers
+            print(f"   │   {total_windows_all:,} windows scanned → {before_cons:,} unique valid k-mers")
+            print(f"   │   Conservation ≥{base_cons_ratio:.0%} ({min_cons}/{len(target_strains)} strains): {len(elite_targets)} elite k-mers")
+            del target_pool, valid_kmers
             gc.collect()
 
-            # PHASE 2: BACKGROUND SCRUBBING
+            # ── PHASE 2 ──
             if bg_strains and elite_targets:
                 bg_blacklist = set()
                 elite_frozen = frozenset(elite_targets)
 
                 with multiprocessing.Pool(self.cpu) as pool:
-                    bg_step = max(1, k_step // 2)
+                    bg_step = 1
                     tasks = [(sid, seqs, self.k, elite_frozen, bg_step) for sid, seqs in bg_strains.items()]
                     try:
                         for arr in pool.imap_unordered(self._targeted_kmer_worker, tasks):
@@ -202,19 +229,29 @@ class PrimerDesigner:
                         sys.exit(1)
 
                 elite_targets = elite_targets - bg_blacklist
-                print(f"      > Remaining {len(elite_targets)} clean primers.")
+                blacklisted = len(elite_frozen) - len(elite_targets)
+                pct = blacklisted / len(elite_frozen) * 100 if elite_frozen else 0
+                print(f"   │   Background: {blacklisted}/{len(elite_frozen)} blacklisted ({pct:.1f}%) → {len(elite_targets)} clean")
+            else:
+                print(f"   │   Background: none")
 
-            # PHASE 3: FINAL SELECTION
+            # ── PHASE 3 ──
             if elite_targets:
                 raw_pairs = self._extract_raw_pairs(elite_targets, target_strains)
+                print(f"   │   Pairs: {len(raw_pairs)} found from {len(elite_targets)} anchors")
                 all_raw_pairs.extend(raw_pairs)
+            else:
+                print(f"   │   Pairs: none (no clean primers)")
+
+            print(f"   └─ {time.time()-k_t:.1f}s{' ' * 25}┘")
+            print()
 
         if all_raw_pairs:
-            print(f"   [Phase 3] Scoring & Ranking {len(all_raw_pairs)} candidate pairs...")
+            print(f"   [Final] Scoring & Ranking {len(all_raw_pairs)} candidate pairs across all k...")
             self._score_and_save(all_raw_pairs, target_strains, output_csv)
-            print(f"    ✅ Stage 2 Complete: {time.time()-t_start:.1f}s")
+            print(f"   ✅ Stage 2 Complete: {time.time()-t_start:.1f}s")
         else:
-            print("    ⚠️ Could not find valid primers for any length.")
+            print("   ⚠️  FAILED: No valid assays found. Consider lowering conservation or expanding k range.")
 
     def _targeted_kmer_worker(self, args):
         """Scan Background with stride for speedup."""
@@ -228,8 +265,8 @@ class PrimerDesigner:
                 sub = seq_u[i : i + k]
                 h = 0
                 for char in sub:
-                    val = DNA_MAP.get(char, -1)
-                    if val == -1:
+                    val = DNA_MAP[ord(char)]
+                    if val == 0xFF:
                         h = -1
                         break
                     h = (h << 2) | val
@@ -329,19 +366,44 @@ class PrimerDesigner:
         ref_seqs = target_strains[ref_sid]
         raw_pairs, seen_pos, pos_gap = [], set(), 150
         mask = (1 << (2 * self.k)) - 1
+        n_anchors = 0
+        n_dist_fail = 0
+        n_tm_fail = 0
+        n_qc_fail = 0
+
+        degenerate = self.params.get("degenerate_primers", False)
+        if degenerate:
+            variant_hashes = set()
+            for h in elite_hashes:
+                for pos in range(self.k):
+                    shift = 2 * pos
+                    base = (h >> shift) & 3
+                    for alt in range(4):
+                        if alt != base:
+                            vh = (h & ~(3 << shift)) | (alt << shift)
+                            variant_hashes.add(vh)
 
         for seq in ref_seqs:
             anchors = []
-            for i in range(len(seq) - self.k + 1):
-                sub = seq[i : i + self.k]
-                h = 0
-                valid = True
-                for char in sub:
-                    if char in DNA_MAP: h = (h << 2) | DNA_MAP[char]
-                    else: {valid := False}; break
-                if valid and (h & mask) in elite_hashes:
-                    anchors.append((i, sub))
+            n = len(seq)
+            if n < self.k:
+                continue
+            h = 0
+            roll_count = 0
+            for i in range(n):
+                val = DNA_MAP[ord(seq[i])]
+                if val != 0xFF:
+                    h = ((h << 2) | val) & mask
+                    roll_count += 1
+                    if roll_count >= self.k:
+                        start = i - self.k + 1
+                        if h in elite_hashes or (degenerate and h in variant_hashes):
+                            anchors.append((start, seq[start:start + self.k]))
+                else:
+                    roll_count = 0
+                    h = 0
 
+            n_anchors += len(anchors)
             for i in range(len(anchors)):
                 pos_a, seq_a = anchors[i]
                 if any(abs(pos_a - p) < pos_gap for p in seen_pos): continue
@@ -352,16 +414,17 @@ class PrimerDesigner:
                         f, r = seq_a, str(Seq(seq_b).reverse_complement())
                         tm_f = self._calc_tm(f)
                         tm_r = self._calc_tm(r)
-                        # IDT/ThermoFisher-compatible pre-filter:
-                        # 1) Both primers must be within configured Tm range
-                        # 2) Tm_Delta (|Tm_F - Tm_R|) must be <= 3°C
                         if (self.tm_min <= tm_f <= self.tm_max and
                             self.tm_min <= tm_r <= self.tm_max and
-                            abs(tm_f - tm_r) <= self.tm_delta_max and
-                            self._passes_structural_qc(f, r)):
-                            raw_pairs.append({'Fwd': f, 'Rev': r, 'Pos': pos_a})
-                            seen_pos.add(pos_a)
-                            break
+                            abs(tm_f - tm_r) <= self.tm_delta_max):
+                            if self._passes_structural_qc(f, r):
+                                raw_pairs.append({'Fwd': f, 'Rev': r, 'Pos': pos_a})
+                                seen_pos.add(pos_a)
+                                break
+                            else:
+                                n_qc_fail += 1
+                        else:
+                            n_tm_fail += 1
                     elif dist > self.max_p: break
                 if len(raw_pairs) >= self.max_candidates: break
         return raw_pairs
@@ -397,6 +460,8 @@ class PrimerDesigner:
 
     def _passes_structural_qc(self, fwd, rev):
         try:
+            if _is_degenerate(fwd) or _is_degenerate(rev):
+                return True
             from .multiplex import check_dimer, check_hairpin
             for seq in (fwd, rev):
                 if is_low_complexity_sequence(seq):
@@ -413,8 +478,11 @@ class PrimerDesigner:
 
     def _calc_tm(self, seq):
         """IDT OligoAnalyzer / ThermoFisher-compatible Tm (SantaLucia 1998).
-        Conditions: Na=50mM, Mg=3.0mM, dNTPs=0.8mM, [Oligo]=250nM."""
+        Conditions: Na=50mM, Mg=3.0mM, dNTPs=0.8mM, [Oligo]=250nM.
+        For degenerate sequences, Tm is approximated from non-IUPAC bases."""
         clean = "".join([c for c in str(seq).upper() if c in 'ATGC'])
+        if len(clean) < 4:
+            return 0.0
         return mt.Tm_NN(
             Seq(clean),
             nn_table=mt.DNA_NN3,

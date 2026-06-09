@@ -48,24 +48,52 @@ IUPAC_MAP = {
     frozenset(['A', 'C', 'G', 'T']): 'N'
 }
 
-def generate_iupac_consensus(sequences):
-    """Generate degenerate IUPAC consensus sequence from a list of aligned gene segments."""
+def generate_iupac_consensus(sequences, max_iupac=None):
+    """Generate degenerate IUPAC consensus sequence from a list of aligned gene segments.
+    
+    Args:
+        sequences: List of aligned nucleotide sequences (all same length).
+        max_iupac: If set, caps the number of degenerate (IUPAC) positions per sequence.
+                   Exceeding positions are collapsed back to the dominant base.
+    """
     if not sequences:
         return ""
     length = len(sequences[0])
     consensus = []
+    pos_info = []
     for i in range(length):
         bases = set()
+        counts = {}
         for seq in sequences:
             if i < len(seq):
                 b = seq[i].upper()
                 if b in ['A', 'C', 'G', 'T']:
                     bases.add(b)
+                    counts[b] = counts.get(b, 0) + 1
         if not bases:
             consensus.append('N')
+            pos_info.append(('N', 'N', 0))
         else:
-            consensus.append(IUPAC_MAP.get(frozenset(bases), 'N'))
-    return "".join(consensus)
+            iupac = IUPAC_MAP.get(frozenset(bases), 'N')
+            dominant = max(counts, key=counts.get)
+            conservation = counts[dominant] / sum(counts.values())
+            consensus.append(iupac)
+            pos_info.append((iupac, dominant, conservation))
+
+    result = "".join(consensus)
+
+    if max_iupac is not None and max_iupac >= 0:
+        deg = [(i, d, c) for i, (c, d, con) in enumerate(pos_info) if c not in ('A', 'C', 'G', 'T')]
+        if len(deg) > max_iupac:
+            deg.sort(key=lambda x: x[2], reverse=True)
+            keep = set(i for i, _, _ in deg[:max_iupac])
+            lst = list(result)
+            for i, d, _ in deg:
+                if i not in keep:
+                    lst[i] = d
+            result = "".join(lst)
+
+    return result
 
 def generate_batch_analytical_summary(path_master_stats, current_params, language="vi") -> str:
     """
@@ -86,9 +114,9 @@ def generate_batch_analytical_summary(path_master_stats, current_params, languag
             
         def calc_tm(seq):
             if pd.isna(seq) or not seq: return 0.0
-            # Remove degenerate IUPAC characters if present
+            # Remove degenerate IUPAC characters — Tm is approximated
             clean_seq = "".join([c for c in str(seq).upper() if c in ['A', 'C', 'G', 'T']])
-            if len(clean_seq) < 8: return 0.0
+            if len(clean_seq) < 4: return 0.0
             try:
                 # IDT OligoAnalyzer / ThermoFisher-compatible conditions:
                 # Na=50mM, Mg=3.0mM, dNTPs=0.8mM, [Oligo]=250nM
@@ -108,13 +136,39 @@ def generate_batch_analytical_summary(path_master_stats, current_params, languag
             if pd.isna(seq) or not seq: return 0.0
             seq_str = str(seq).upper()
             g_c = seq_str.count('G') + seq_str.count('C')
-            return round((g_c / len(seq_str)) * 100, 1) if len(seq_str) > 0 else 0.0
+            # Count degenerate chars as partial GC based on IUPAC ambiguity
+            from .validator import IUPAC as v_iupac
+            gc_fraction = 0.0
+            for c in seq_str:
+                if c in ('G', 'C'):
+                    gc_fraction += 1.0
+                elif c in ('A', 'T'):
+                    gc_fraction += 0.0
+                elif c in v_iupac:
+                    bases = v_iupac[c]
+                    gc_fraction += sum(1 for b in bases if b in ('G', 'C')) / len(bases)
+                else:
+                    gc_fraction += 0.5
+            return round((gc_fraction / max(1, len(seq_str))) * 100, 1)
             
         def calc_end3_gc(seq):
-            """Check if 3' end (last 5 bases) has GC clamp (1-2 G/C is ideal)."""
+            """Check if 3' end (last 5 bases) has GC clamp (1-2 G/C is ideal).
+            For degenerate sequences, returns weighted GC count using IUPAC ambiguity."""
             if pd.isna(seq) or not seq: return 0
             end = str(seq).upper()[-5:]
-            return end.count('G') + end.count('C')
+            from .validator import IUPAC as v_iupac
+            gc = 0.0
+            for c in end:
+                if c in ('G', 'C'):
+                    gc += 1.0
+                elif c in ('A', 'T'):
+                    gc += 0.0
+                elif c in v_iupac:
+                    bases = v_iupac[c]
+                    gc += sum(1 for b in bases if b in ('G', 'C')) / len(bases)
+                else:
+                    gc += 0.5
+            return round(gc, 1)
             
         df['Fwd_Tm'] = df['Forward Primer'].apply(calc_tm)
         df['Rev_Tm'] = df['Reverse Primer'].apply(calc_tm)

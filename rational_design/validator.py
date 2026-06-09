@@ -302,8 +302,9 @@ class InSilicoValidator:
                 f_binds = p_df["F_Bind_Seq"].dropna().tolist()
                 r_binds = p_df["R_Bind_Seq"].dropna().tolist()
                 if f_binds and r_binds:
-                    fwd_seq = generate_iupac_consensus(f_binds)
-                    rev_seq = generate_iupac_consensus(r_binds)
+                    max_iupac = int(self.params.get("max_iupac_per_primer", 2))
+                    fwd_seq = generate_iupac_consensus(f_binds, max_iupac=max_iupac)
+                    rev_seq = generate_iupac_consensus(r_binds, max_iupac=max_iupac)
 
             summary.append({
                 "Primer Pair": p,

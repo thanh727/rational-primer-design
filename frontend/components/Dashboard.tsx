@@ -61,20 +61,7 @@ type ResultPayload = {
   files: Array<{ name: string; path: string; size_bytes: number }>;
 };
 
-type HistoricalRun = {
-  target_name: string;
-  run_folder_name: string;
-  path: string;
-  timestamp: string;
-  best_assay?: string;
-  sensitivity?: string;
-  specificity?: string;
-  target_gene?: string;
-  is_multiplex?: boolean;
-};
-
 type HistoryPayload = {
-  legacy_runs: HistoricalRun[];
   web_jobs: Job[];
 };
 
@@ -137,7 +124,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     sharedConfig: "Cấu hình dùng chung",
     aiConfig: "Chuyên gia AI",
     dashboard: "Bảng điều khiển",
-    dashboardTitle: "Bảng điều khiển lịch sử",
+    dashboardTitle: "Bảng điều khiển",
     local: "Tệp cục bộ",
     auto: "Từ khóa tự động",
     ai: "Trò chuyện AI",
@@ -185,8 +172,6 @@ const I18N: Record<Lang, Record<string, string>> = {
     assays: "Bộ mồi",
     files: "Tệp",
     noJobs: "Chưa có lịch sử tác vụ.",
-    noLegacy: "Chưa có run cũ.",
-    legacyRuns: "Lần chạy Streamlit cũ",
     selectJob: "Chọn tác vụ",
     routes: "Chức năng",
     localTitle: "Thiết kế từ tệp cục bộ",
@@ -245,6 +230,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     iupacWarning: "IUPAC tăng độ bao phủ chủng biến dị nhưng có thể tăng phản ứng chéo; luôn kiểm tra background trước wet-lab.",
     resultInterpretation: "Diễn giải nhanh kết quả",
     copy: "Copy",
+    newChat: "Chat mới",
     copyAll: "Copy toàn bộ",
     copyPrimers: "Copy primer",
     bestCandidate: "Ứng viên tốt nhất",
@@ -298,6 +284,18 @@ const I18N: Record<Lang, Record<string, string>> = {
     enable_blast: "Bật BLAST",
     auto_relax_constraints: "Tự nới điều kiện",
     degenerate_primers: "Thiết kế mồi thoái hóa IUPAC",
+    designSet: "Bộ mẫu thiết kế (Design Set)",
+    validationSet: "Bộ mẫu kiểm chứng (Validation Set)",
+    general: "Tham số chung",
+    design_target_sampling_size: "Số lượng mẫu target (Design)",
+    design_background_sampling_size: "Số lượng mẫu nền (Design)",
+    validation_target_sampling_size: "Số lượng mẫu target (Validation)",
+    validation_background_sampling_size: "Số lượng mẫu nền (Validation)",
+    max_iupac_per_primer: "Số vị trí IUPAC tối đa/mồi",
+    primer_length_min: "Chiều dài mồi tối thiểu",
+    primer_length_max: "Chiều dài mồi tối đa",
+    primer_tm_min: "Nhiệt độ nóng chảy tối thiểu",
+    primer_tm_max: "Nhiệt độ nóng chảy tối đa",
     source_local: "Cục bộ",
     source_auto: "Tự động",
     source_upload: "Tải lên",
@@ -315,7 +313,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     sharedConfig: "Shared configuration",
     aiConfig: "AI Expert",
     dashboard: "Dashboard",
-    dashboardTitle: "Dashboard history",
+    dashboardTitle: "Dashboard",
     local: "Local file",
     auto: "Auto keywords",
     ai: "AI chat",
@@ -363,10 +361,8 @@ const I18N: Record<Lang, Record<string, string>> = {
     assays: "Assays",
     files: "Files",
     noJobs: "No job history yet.",
-    noLegacy: "No legacy runs yet.",
-    legacyRuns: "Legacy Streamlit runs",
     selectJob: "Select job",
-    routes: "Workflow",
+    routes: "Dashboard",
     localTitle: "Design with local files",
     autoTitle: "Automatic design from NCBI keywords",
     aiTitle: "Design with AI chat",
@@ -423,6 +419,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     iupacWarning: "IUPAC increases coverage of variant strains but can increase cross-reactivity; always screen backgrounds before wet-lab use.",
     resultInterpretation: "Quick result interpretation",
     copy: "Copy",
+    newChat: "New chat",
     copyAll: "Copy all",
     copyPrimers: "Copy primers",
     bestCandidate: "Best candidate",
@@ -476,6 +473,18 @@ const I18N: Record<Lang, Record<string, string>> = {
     enable_blast: "Enable BLAST",
     auto_relax_constraints: "Auto-relax constraints",
     degenerate_primers: "Design IUPAC degenerate primers",
+    designSet: "Design Set",
+    validationSet: "Validation Set",
+    general: "General",
+    design_target_sampling_size: "Design target sample size",
+    design_background_sampling_size: "Design background sample size",
+    validation_target_sampling_size: "Validation target sample size",
+    validation_background_sampling_size: "Validation background sample size",
+    max_iupac_per_primer: "Max IUPAC positions per primer",
+    primer_length_min: "Min primer length",
+    primer_length_max: "Max primer length",
+    primer_tm_min: "Min primer Tm",
+    primer_tm_max: "Max primer Tm",
     source_local: "Local",
     source_auto: "Automatic",
     source_upload: "Upload",
@@ -489,17 +498,37 @@ const I18N: Record<Lang, Record<string, string>> = {
   },
 };
 
-const PARAM_FIELDS: Array<{ key: string; type: "number" | "boolean"; min?: number; max?: number; step?: number }> = [
-  { key: "min_sensitivity", type: "number", min: 50, max: 100, step: 0.1 },
-  { key: "design_min_conservation", type: "number", min: 0.5, max: 1, step: 0.01 },
-  { key: "design_max_candidates", type: "number", min: 1, max: 500, step: 1 },
-  { key: "product_size_min", type: "number", min: 50, max: 1000, step: 1 },
-  { key: "product_size_max", type: "number", min: 50, max: 2000, step: 1 },
-  { key: "max_mismatch", type: "number", min: 0, max: 8, step: 1 },
-  { key: "cpu_cores", type: "number", min: 0, max: 128, step: 1 },
-  { key: "enable_blast", type: "boolean" },
-  { key: "auto_relax_constraints", type: "boolean" },
-  { key: "degenerate_primers", type: "boolean" },
+const PARAM_GROUPS = ["designSet", "validationSet", "general"] as const;
+
+type ParamField = {
+  key: string;
+  type: "number" | "boolean";
+  group: (typeof PARAM_GROUPS)[number];
+  min?: number;
+  max?: number;
+  step?: number;
+};
+
+const PARAM_FIELDS: ParamField[] = [
+  { key: "design_target_sampling_size", type: "number", group: "designSet", min: 0, max: 500, step: 1 },
+  { key: "design_background_sampling_size", type: "number", group: "designSet", min: 0, max: 500, step: 1 },
+  { key: "primer_length_min", type: "number", group: "designSet", min: 10, max: 50, step: 1 },
+  { key: "primer_length_max", type: "number", group: "designSet", min: 10, max: 50, step: 1 },
+  { key: "primer_tm_min", type: "number", group: "designSet", min: 40, max: 80, step: 0.5 },
+  { key: "primer_tm_max", type: "number", group: "designSet", min: 40, max: 80, step: 0.5 },
+  { key: "design_min_conservation", type: "number", group: "designSet", min: 0.5, max: 1, step: 0.01 },
+  { key: "design_max_candidates", type: "number", group: "designSet", min: 1, max: 500, step: 1 },
+  { key: "validation_target_sampling_size", type: "number", group: "validationSet", min: 0, max: 500, step: 1 },
+  { key: "validation_background_sampling_size", type: "number", group: "validationSet", min: 0, max: 500, step: 1 },
+  { key: "min_sensitivity", type: "number", group: "validationSet", min: 50, max: 100, step: 0.1 },
+  { key: "max_mismatch", type: "number", group: "validationSet", min: 0, max: 8, step: 1 },
+  { key: "product_size_min", type: "number", group: "general", min: 50, max: 1000, step: 1 },
+  { key: "product_size_max", type: "number", group: "general", min: 50, max: 2000, step: 1 },
+  { key: "cpu_cores", type: "number", group: "general", min: 0, max: 128, step: 1 },
+  { key: "enable_blast", type: "boolean", group: "general" },
+  { key: "auto_relax_constraints", type: "boolean", group: "general" },
+  { key: "degenerate_primers", type: "boolean", group: "general" },
+  { key: "max_iupac_per_primer", type: "number", group: "general", min: 0, max: 10, step: 1 },
 ];
 
 const NAV: Array<{ view: WorkspaceView; href: string; icon: string }> = [
@@ -516,7 +545,6 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   const [lang, setLang] = useState<Lang>("vi");
   const [parameters, setParameters] = useState<Parameters>({});
   const [jobs, setJobs] = useState<Job[]>([]);
-  const [legacyRuns, setLegacyRuns] = useState<HistoricalRun[]>([]);
   const [job, setJob] = useState<Job | null>(null);
   const [logs, setLogs] = useState("");
   const [results, setResults] = useState<ResultPayload | null>(null);
@@ -581,6 +609,30 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
         "Tôi luôn ở đây để trả lời về app, thiết kế primer/PCR/qPCR, đánh giá kết quả và tối ưu wet-lab. Tôi sẽ không tự chạy pipeline từ khung chat nhỏ này.",
     },
   ]);
+
+  function resetAssistantChat() {
+    setAssistantChat([
+      {
+        role: "assistant",
+        content:
+          "Tôi luôn ở đây để trả lời về app, thiết kế primer/PCR/qPCR, đánh giá kết quả và tối ưu wet-lab. Tôi sẽ không tự chạy pipeline từ khung chat nhỏ này.",
+      },
+    ]);
+    setProposal(null);
+    setBlockedReason("");
+  }
+
+  function resetChat() {
+    setChat([
+      {
+        role: "assistant",
+        content:
+          "Tôi là AI Expert. Hãy nói target, background, bộ primer hoặc yêu cầu multiplex; tôi sẽ đề xuất cấu hình và có thể tự chạy pipeline.",
+      },
+    ]);
+    setProposal(null);
+    setBlockedReason("");
+  }
   const [fileBrowser, setFileBrowser] = useState<FileBrowserState | null>(null);
 
   const tx = I18N[lang];
@@ -705,10 +757,8 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
       const data = await api<Job[]>("/api/jobs");
       setJobs(data);
       const history = await api<HistoryPayload>("/api/history");
-      setLegacyRuns(history.legacy_runs);
     } catch {
       setJobs([]);
-      setLegacyRuns([]);
     }
   }
 
@@ -716,8 +766,8 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
     try {
       const nextJob = await api<Job>(`/api/jobs/${jobId}`);
       setJob(nextJob);
-      const logPayload = await api<{ combined: string }>(`/api/jobs/${jobId}/logs`);
-      setLogs(logPayload.combined);
+      const logPayload = await api<{ logs: string }>(`/api/jobs/${jobId}/logs`);
+      setLogs(logPayload.logs);
       setResults(await api<ResultPayload>(`/api/jobs/${jobId}/results`));
       void refreshJobs();
     } catch (err) {
@@ -1109,40 +1159,42 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
         </div>
       </header>
 
-      <div className="site-body">
-        <aside className="config-sidebar" aria-label={tx.sharedConfig}>
-          <SharedConfigPanel
-            tx={tx}
-            lang={lang}
-            changeLanguage={changeLanguage}
-            outputName={outputName}
-            setOutputName={setOutputName}
-            email={email}
-            setEmail={setEmail}
-            rememberEmail={rememberEmail}
-            setRememberEmail={setRememberEmail}
-            aiBaseUrl={aiBaseUrl}
-            setAiBaseUrl={setAiBaseUrl}
-            aiModel={aiModel}
-            setAiModel={setAiModel}
-            offlineModels={offlineModels}
-            detectOfflineModels={detectOfflineModels}
-            aiAutoRun={aiAutoRun}
-            setAiAutoRun={setAiAutoRun}
-            assayType={assayType}
-            setAssayType={setAssayType}
-            parameters={parameters}
-            setParam={setParam}
-            restore={() => void loadDefaults()}
-          />
-          <SystemStatusPanel tx={tx} status={status} refresh={() => void refreshStatus()} />
-          <RecentJobs tx={tx} jobs={jobs} select={(item) => setJob(item)} />
-        </aside>
+      <div className={"site-body" + (view === "dashboard" ? " site-body--full" : "")}>
+        {view !== "dashboard" ? (
+          <aside className="config-sidebar" aria-label={tx.sharedConfig}>
+            <SharedConfigPanel
+              tx={tx}
+              lang={lang}
+              changeLanguage={changeLanguage}
+              outputName={outputName}
+              setOutputName={setOutputName}
+              email={email}
+              setEmail={setEmail}
+              rememberEmail={rememberEmail}
+              setRememberEmail={setRememberEmail}
+              aiBaseUrl={aiBaseUrl}
+              setAiBaseUrl={setAiBaseUrl}
+              aiModel={aiModel}
+              setAiModel={setAiModel}
+              offlineModels={offlineModels}
+              detectOfflineModels={detectOfflineModels}
+              aiAutoRun={aiAutoRun}
+              setAiAutoRun={setAiAutoRun}
+              assayType={assayType}
+              setAssayType={setAssayType}
+              parameters={parameters}
+              setParam={setParam}
+              restore={() => void loadDefaults()}
+            />
+            <SystemStatusPanel tx={tx} status={status} refresh={() => void refreshStatus()} />
+            <RecentJobs tx={tx} jobs={jobs} select={(item) => setJob(item)} />
+          </aside>
+        ) : null}
 
         <section className="workspace">
           <header className="topbar">
             <div>
-              <div className="eyebrow">{tx.routes}</div>
+              {view !== "dashboard" ? <div className="eyebrow">{tx.routes}</div> : null}
               <h2>{title}</h2>
             </div>
           </header>
@@ -1194,11 +1246,11 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
             <AboutPage tx={tx} />
           ) : view === "dashboard" ? (
             <section className="main-grid">
-              <DashboardHome tx={tx} jobs={jobs} legacyRuns={legacyRuns} selectedJob={job} select={(item) => setJob(item)} />
               <div className="stack">
-                <MonitorPanel tx={tx} job={job} terminal={terminal} cancel={cancelCurrentJob} deleteJob={deleteCurrentJob} refresh={() => job && void refreshJob(job.id)} />
+                <DashboardHome tx={tx} jobs={jobs} selectedJob={job} select={(item) => setJob(item)} />
                 <ResultsPanel tx={tx} results={results} requestBrowse={requestBrowse} />
               </div>
+              <MonitorPanel tx={tx} job={job} terminal={terminal} cancel={cancelCurrentJob} deleteJob={deleteCurrentJob} refresh={() => job && void refreshJob(job.id)} />
             </section>
           ) : (
             <section className={view === "ai" ? "main-grid ai-main-grid" : "main-grid"}>
@@ -1242,26 +1294,27 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
                   />
                 ) : null}
                 {view === "ai" ? (
-                  <AiMode
-                    tx={tx}
-                    email={email}
-                    setEmail={setEmail}
-                    aiBaseUrl={aiBaseUrl}
-                    setAiBaseUrl={setAiBaseUrl}
-                    aiModel={aiModel}
-                    setAiModel={setAiModel}
-                    aiAutoRun={aiAutoRun}
-                    setAiAutoRun={setAiAutoRun}
-                    lang={lang}
-                    chat={chat}
-                    chatInput={chatInput}
-                    setChatInput={setChatInput}
-                    sendChat={sendChat}
-                    proposal={proposal}
-                    blockedReason={blockedReason}
-                    runProposal={runProposal}
-                    isBusy={isBusy}
-                  />
+                    <AiMode
+                      tx={tx}
+                      email={email}
+                      setEmail={setEmail}
+                      aiBaseUrl={aiBaseUrl}
+                      setAiBaseUrl={setAiBaseUrl}
+                      aiModel={aiModel}
+                      setAiModel={setAiModel}
+                      aiAutoRun={aiAutoRun}
+                      setAiAutoRun={setAiAutoRun}
+                      lang={lang}
+                      chat={chat}
+                      chatInput={chatInput}
+                      setChatInput={setChatInput}
+                      sendChat={sendChat}
+                      proposal={proposal}
+                      blockedReason={blockedReason}
+                      runProposal={runProposal}
+                      isBusy={isBusy}
+                      onNewChat={resetChat}
+                    />
                 ) : null}
                 {view === "validate" ? (
                   <ValidationMode
@@ -1340,6 +1393,7 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
         setInput={setAssistantInput}
         isBusy={assistantBusy}
         send={sendAssistantChat}
+        onNewChat={resetAssistantChat}
       />
       {fileBrowser?.open ? <FileBrowserModal tx={tx} state={fileBrowser} setState={setFileBrowser} api={(path) => api<FileBrowserResponse>(path)} /> : null}
     </main>
@@ -1379,95 +1433,107 @@ function SharedConfigPanel(props: {
         </button>
       </div>
 
-      <div className="config-section">
-        <label>
-          {props.tx.language}
-          <select value={props.lang} onChange={(event) => props.changeLanguage(event.target.value as Lang)}>
-            <option value="vi">Tiếng Việt</option>
-            <option value="en">English</option>
-          </select>
-        </label>
-        <label>
-          {props.tx.outputName}
-          <input value={props.outputName} onChange={(event) => props.setOutputName(event.target.value)} />
-        </label>
-        <label>
-          {props.tx.email}
-          <input value={props.email} onChange={(event) => props.setEmail(event.target.value)} />
-        </label>
-        <label className="toggle-row">
-          <span>{props.tx.rememberEmail}</span>
-          <input type="checkbox" checked={props.rememberEmail} onChange={(event) => props.setRememberEmail(event.currentTarget.checked)} />
-        </label>
-        <label>
-          {props.tx.assayType}
-          <select value={props.assayType} onChange={(event) => props.setAssayType(event.target.value as "qPCR" | "Conventional")}>
-            <option value="qPCR">qPCR</option>
-            <option value="Conventional">{props.tx.conventional}</option>
-          </select>
-        </label>
-      </div>
-
-      <div className="config-section">
-        <div className="subheading">{props.tx.aiConfig}</div>
-        <label>
-          {props.tx.aiEndpoint}
-          <input value={props.aiBaseUrl} onChange={(event) => props.setAiBaseUrl(event.target.value)} />
-        </label>
-        <label>
-          {props.tx.aiModel}
-          {props.offlineModels?.models.length ? (
-            <select value={props.aiModel} onChange={(event) => props.setAiModel(event.target.value)}>
-              {props.offlineModels.models.map((model) => (
-                <option key={model} value={model}>
-                  {model}
-                </option>
-              ))}
+      <div className="config-widget" id="config-general-config">
+        <div className="config-widget-body">
+          <label>
+            {props.tx.language}
+            <select value={props.lang} onChange={(event) => props.changeLanguage(event.target.value as Lang)}>
+              <option value="vi">Tiếng Việt</option>
+              <option value="en">English</option>
             </select>
-          ) : (
-            <input value={props.aiModel} onChange={(event) => props.setAiModel(event.target.value)} />
-          )}
-        </label>
-        <div className="model-status">
-          <span>
-            {props.tx.modelProvider}: {props.offlineModels?.available ? props.offlineModels.provider : props.tx.modelServerOffline}
-          </span>
-          <button className="ghost" type="button" onClick={() => void props.detectOfflineModels()}>
-            {props.tx.detectModels}
-          </button>
+          </label>
+          <label>
+            {props.tx.outputName}
+            <input value={props.outputName} onChange={(event) => props.setOutputName(event.target.value)} />
+          </label>
+          <label>
+            {props.tx.email}
+            <input value={props.email} onChange={(event) => props.setEmail(event.target.value)} />
+          </label>
+          <label className="toggle-row">
+            <span>{props.tx.rememberEmail}</span>
+            <input type="checkbox" checked={props.rememberEmail} onChange={(event) => props.setRememberEmail(event.currentTarget.checked)} />
+          </label>
+          <label>
+            {props.tx.assayType}
+            <select value={props.assayType} onChange={(event) => props.setAssayType(event.target.value as "qPCR" | "Conventional")}>
+              <option value="qPCR">qPCR</option>
+              <option value="Conventional">{props.tx.conventional}</option>
+            </select>
+          </label>
         </div>
-        <label className="toggle-row">
-          <span>{props.tx.aiAutoRun}</span>
-          <input type="checkbox" checked={props.aiAutoRun} onChange={(event) => props.setAiAutoRun(event.currentTarget.checked)} />
-        </label>
       </div>
 
-      <div className="config-section">
-        <div className="subheading">{props.tx.params}</div>
-        {props.parameters.degenerate_primers ? <div className="soft-warning">{props.tx.iupacWarning}</div> : null}
-        <div className="config-param-grid">
-          {PARAM_FIELDS.map((field) =>
-            field.type === "boolean" ? (
-              <label className="toggle-row" key={field.key}>
-                <span>{props.tx[field.key] ?? field.key}</span>
-                <input type="checkbox" checked={Boolean(props.parameters[field.key])} onChange={(event) => props.setParam(field.key, event.currentTarget.checked)} />
-              </label>
+      <div className="config-widget" id="config-ai-config">
+        <div className="config-widget-head">{props.tx.aiConfig}</div>
+        <div className="config-widget-body">
+          <label>
+            {props.tx.aiEndpoint}
+            <input value={props.aiBaseUrl} onChange={(event) => props.setAiBaseUrl(event.target.value)} />
+          </label>
+          <label>
+            {props.tx.aiModel}
+            {props.offlineModels?.models.length ? (
+              <select value={props.aiModel} onChange={(event) => props.setAiModel(event.target.value)}>
+                {props.offlineModels.models.map((model) => (
+                  <option key={model} value={model}>
+                    {model}
+                  </option>
+                ))}
+              </select>
             ) : (
-              <label key={field.key}>
-                {props.tx[field.key] ?? field.key}
-                <input
-                  type="number"
-                  min={field.min}
-                  max={field.max}
-                  step={field.step}
-                  value={String(props.parameters[field.key] ?? "")}
-                  onChange={(event) => props.setParam(field.key, Number(event.currentTarget.value))}
-                />
-              </label>
-            ),
-          )}
+              <input value={props.aiModel} onChange={(event) => props.setAiModel(event.target.value)} />
+            )}
+          </label>
+          <div className="model-status">
+            <span>
+              {props.tx.modelProvider}: {props.offlineModels?.available ? props.offlineModels.provider : props.tx.modelServerOffline}
+            </span>
+            <button className="ghost" type="button" onClick={() => void props.detectOfflineModels()}>
+              {props.tx.detectModels}
+            </button>
+          </div>
+          <label className="toggle-row">
+            <span>{props.tx.aiAutoRun}</span>
+            <input type="checkbox" checked={props.aiAutoRun} onChange={(event) => props.setAiAutoRun(event.currentTarget.checked)} />
+          </label>
         </div>
       </div>
+
+      {(PARAM_GROUPS as readonly string[]).map((group) => {
+        const fields = PARAM_FIELDS.filter((f) => f.group === group);
+        if (fields.length === 0) return null;
+        return (
+          <div className="config-widget" key={group} id={`config-${group}`}>
+            <div className="config-widget-head">{props.tx[group] ?? group}</div>
+            <div className="config-widget-body">
+              {group === "general" && props.parameters.degenerate_primers ? <div className="soft-warning">{props.tx.iupacWarning}</div> : null}
+              <div className="config-param-grid">
+                {fields.map((field) =>
+                  field.type === "boolean" ? (
+                    <label className="toggle-row" key={field.key}>
+                      <span>{props.tx[field.key] ?? field.key}</span>
+                      <input type="checkbox" checked={Boolean(props.parameters[field.key])} onChange={(event) => props.setParam(field.key, event.currentTarget.checked)} />
+                    </label>
+                  ) : (
+                    <label key={field.key}>
+                      {props.tx[field.key] ?? field.key}
+                      <input
+                        type="number"
+                        min={field.min}
+                        max={field.max}
+                        step={field.step}
+                        value={String(props.parameters[field.key] ?? "")}
+                        onChange={(event) => props.setParam(field.key, Number(event.currentTarget.value))}
+                      />
+                    </label>
+                  ),
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })}
     </section>
   );
 }
@@ -1541,7 +1607,7 @@ function WelcomeCard({ tx }: { tx: Record<string, string> }) {
   );
 }
 
-function DashboardHome(props: { tx: Record<string, string>; jobs: Job[]; legacyRuns: HistoricalRun[]; selectedJob: Job | null; select: (job: Job) => void }) {
+function DashboardHome(props: { tx: Record<string, string>; jobs: Job[]; selectedJob: Job | null; select: (job: Job) => void }) {
   return (
     <section className="panel">
       <PanelTitle title={props.tx.dashboardTitle} />
@@ -1559,21 +1625,6 @@ function DashboardHome(props: { tx: Record<string, string>; jobs: Job[]; legacyR
               <span>{props.tx[item.status] ?? item.status}</span>
               <code>{item.output_dir}</code>
             </button>
-          ))}
-        </div>
-      )}
-      <div className="subheading">{props.tx.legacyRuns}</div>
-      {props.legacyRuns.length === 0 ? (
-        <div className="empty-state">{props.tx.noLegacy}</div>
-      ) : (
-        <div className="history-list">
-          {props.legacyRuns.slice(0, 12).map((item) => (
-            <div key={`${item.path}-${item.run_folder_name}`} className="history-row">
-              <span className={`dot ${item.is_multiplex ? "running" : "completed"}`} />
-              <strong>{item.target_name}</strong>
-              <span>{item.best_assay ?? "-"}</span>
-              <code>{item.path}</code>
-            </div>
           ))}
         </div>
       )}
@@ -1829,21 +1880,19 @@ function AiMode(props: {
   blockedReason: string;
   runProposal: () => void;
   isBusy: boolean;
+  onNewChat: () => void;
 }) {
   return (
     <section className="panel ai-panel">
-      <div className="panel-heading">
-        <PanelTitle title={props.tx.aiTitle} />
-        <button className="ghost" type="button" onClick={() => void copyText(chatTranscript(props.chat, props.tx))}>
-          {props.tx.copyAll}
-        </button>
-      </div>
-      <div className="quick-prompts" aria-label={props.tx.aiTitle}>
-        {quickAiPrompts(props.tx, props.lang).map((item) => (
-          <button key={item.label} className="ghost" type="button" onClick={() => props.setChatInput(item.prompt)}>
-            {item.label}
+      <div className="panel-heading ai-heading">
+        <div className="action-group">
+          <button className="ghost" type="button" title={props.tx.newChat} onClick={props.onNewChat}>
+            ✚
           </button>
-        ))}
+          <button className="ghost" type="button" title={props.tx.copyAll} onClick={() => void copyText(chatTranscript(props.chat, props.tx))}>
+            ⎘
+          </button>
+        </div>
       </div>
       <div className="chat-box">
         {props.chat.map((message, index) => (
@@ -1887,6 +1936,7 @@ function FloatingAssistant(props: {
   setInput: (value: string) => void;
   isBusy: boolean;
   send: (event: FormEvent<HTMLFormElement>) => void;
+  onNewChat: () => void;
 }) {
   return (
     <aside className={props.open ? "assistant-dock open" : "assistant-dock"} aria-label={props.tx.assistantDock}>
@@ -1901,12 +1951,14 @@ function FloatingAssistant(props: {
               <strong>{props.tx.assistantDock}</strong>
               <span>{props.tx.aiConfig}</span>
             </div>
-            <button className="ghost" type="button" onClick={() => props.setOpen(false)}>
-              {props.tx.assistantClose}
-            </button>
-            <button className="ghost" type="button" onClick={() => void copyText(chatTranscript(props.messages, props.tx))}>
-              {props.tx.copyAll}
-            </button>
+            <div className="action-group">
+              <button className="ghost" type="button" title={props.tx.newChat} onClick={props.onNewChat}>
+                ✚
+              </button>
+              <button className="ghost" type="button" title={props.tx.copyAll} onClick={() => void copyText(chatTranscript(props.messages, props.tx))}>
+                ⎘
+              </button>
+            </div>
           </div>
           <div className="assistant-messages">
             {props.messages.map((message, index) => (
@@ -2373,19 +2425,29 @@ function ParametersPanel(props: {
 
 function pipelineSteps(terminal: string): Array<{ label: string; done: boolean }> {
   const lines = terminal.split("\n");
+  const stepOrder = [
+    { label: "Building datasets", pattern: /STAGE 1|BUILDING DATASETS/ },
+    { label: "Designing primers", pattern: /STAGE 2|DESIGNING PRIMERS/ },
+    { label: "Filtering candidates", pattern: /STAGE 3|FILTERING/ },
+    { label: "Saving assay results", pattern: /STAGE 4|SAVING.*ASSAY/ },
+    { label: "Validating in-silico PCR", pattern: /STAGE 5|PCR|VALIDAT/ },
+    { label: "Saving validation report", pattern: /STAGE 6|SAVING VALIDATION/ },
+  ];
+  const seen = new Set<string>();
   const steps: Array<{ label: string; done: boolean }> = [];
   let inPipeline = false;
   for (const line of lines) {
-    if (/STAGE 1|BUILDING DATASETS/.test(line) && !inPipeline) { inPipeline = true; steps.push({ label: "Building datasets", done: false }); }
-    if (/STAGE 2|DESIGNING PRIMERS/.test(line)) { steps.push({ label: "Designing primers", done: false }); }
-    if (/STAGE 3|FILTERING/.test(line)) { steps.push({ label: "Filtering candidates", done: false }); }
-    if (/STAGE 4|SAVING.*ASSAY/.test(line)) { steps.push({ label: "Saving assay results", done: false }); }
-    if (/STAGE 5|PCR|VALIDAT/.test(line)) { steps.push({ label: "Validating in-silico PCR", done: false }); }
-    if (/STAGE 6|SAVING VALIDATION/.test(line)) { steps.push({ label: "Saving validation report", done: false }); }
+    for (const step of stepOrder) {
+      if (step.pattern.test(line) && !seen.has(step.label)) {
+        seen.add(step.label);
+        if (step.label === "Building datasets") inPipeline = true;
+        steps.push({ label: step.label, done: false });
+      }
+    }
     if (/✅/.test(line) && steps.length > 0) steps[steps.length - 1].done = true;
     if (/❌ FAILED/.test(line) && steps.length > 0) steps[steps.length - 1].done = false;
   }
-  if (inPipeline) steps[0].done = true;
+  if (inPipeline && steps.length > 0) steps[0].done = true;
   return steps;
 }
 
@@ -2452,8 +2514,8 @@ function MonitorPanel(props: { tx: Record<string, string>; job: Job | null; term
       </div>
       {steps.length > 0 ? (
         <div className="pipeline-steps">
-          {steps.map((step) => (
-            <div key={step.label} className={`pipeline-step ${step.done ? "done" : props.job?.status === "running" ? "active" : ""}`}>
+          {steps.map((step, idx) => (
+            <div key={`${step.label}-${idx}`} className={`pipeline-step ${step.done ? "done" : props.job?.status === "running" ? "active" : ""}`}>
               <span className="step-indicator">{step.done ? "✓" : props.job?.status === "running" ? "○" : "○"}</span>
               <span>{step.label}</span>
             </div>

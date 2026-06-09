@@ -332,15 +332,9 @@ def create_app() -> FastAPI:
     @app.get("/api/jobs/{job_id}/logs")
     def get_logs(job_id: str, tail: int = 12000) -> dict[str, Any]:
         job = _get_job_or_404(job_id)
-        output_dir = Path(job["output_dir"])
-        chunks = []
         process_log = _job_dir(job_id) / "process.log"
-        pipeline_log = output_dir / "pipeline_log.txt"
-        for label, path in (("process", process_log), ("pipeline", pipeline_log)):
-            text = _tail_file(path, max(1000, min(tail, 200000)))
-            if text:
-                chunks.append({"source": label, "text": text})
-        return {"job": job, "chunks": chunks, "combined": "\n".join(c["text"] for c in chunks)}
+        text = _tail_file(process_log, max(1000, min(tail, 200000)))
+        return {"job": job, "logs": text or ""}
 
     @app.post("/api/ai/chat")
     def ai_chat(request: ChatRequest) -> dict[str, Any]:
@@ -914,7 +908,7 @@ def _normalize_assay_type(value: str) -> str:
 def _start_job_from_ai_proposal(proposal: dict[str, Any], request: ChatRequest) -> dict[str, Any]:
     action = proposal.get("action")
     params = dict(request.parameters or {})
-    for key in ("design_target_sampling_size", "design_background_sampling_size", "degenerate_primers"):
+    for key in ("design_target_sampling_size", "design_background_sampling_size", "validation_target_sampling_size", "validation_background_sampling_size", "degenerate_primers", "max_iupac_per_primer"):
         if key in proposal:
             params[key] = proposal[key]
 

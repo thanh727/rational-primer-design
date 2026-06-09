@@ -165,10 +165,14 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
     defaults = {
         "design_target_sampling_size": 0, "design_background_sampling_size": 100,
         "validation_target_sampling_size": 0, "validation_background_sampling_size": 200,
-        "design_max_candidates": 50, "cpu_cores": 0, "primer_length": 20,
+        "design_max_candidates": 50, "cpu_cores": 0,
+        "primer_length_min": 18, "primer_length_max": 22,
+        "primer_tm_min": 55.0, "primer_tm_max": 68.0,
         "product_size_min": 100, "product_size_max": 350,
-        "design_min_conservation": 0.90, "min_sensitivity": 95.0, "max_mismatch": 3,
-        "enable_blast": False  # Annotation disabled by default; opt-in only via user config
+        "design_min_conservation": 0.75, "min_sensitivity": 95.0, "max_mismatch": 3,
+        "enable_blast": False,  # Annotation disabled by default; opt-in only via user config
+        "auto_relax_constraints": True,
+        "max_iupac_per_primer": 2
 
     }
 
@@ -240,7 +244,7 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
         path_raw_target, path_raw_bg = Path(args.local_target), Path(args.local_bg)
     else: return print("❌ Error: Missing data inputs (need either local files or NCBI config).")
 
-    print("\n--- [STAGE 1] BUILDING DATASETS ---")
+    print("\n--- [STAGE 1] BUILDING DATASETS (Strain-based) ---")
     cons = LibraryConstructor()
     cons.construct(str(path_raw_target), str(path_raw_bg), {
         "design_target": str(path_design_target), "design_background": str(path_design_bg),

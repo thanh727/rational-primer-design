@@ -1,4 +1,5 @@
 import os
+import socket
 import time
 import random
 from pathlib import Path
@@ -16,12 +17,14 @@ class SequenceFetcher:
         self,
         email: str,
         api_key: Optional[str] = None,
-        chunk_size: int = 200,
-        max_retries: int = 3
+        chunk_size: int = 20,
+        max_retries: int = 3,
+        timeout: int = 120
     ):
         self.email = email
         self.chunk_size = chunk_size
         self.max_retries = max_retries
+        self.timeout = timeout
 
         Entrez.email = email
         if api_key:
@@ -52,14 +55,17 @@ class SequenceFetcher:
         for r in records:
             size_mb = len(r.seq) / 1_000_000
             if size_mb >= size_thresh_mb:
-                acc_id = r.id.split('.')[0] if '.' in r.id else r.id
-                r.id = f"{acc_id}_{name_key}"
-                r.description = ""
                 valid_recs.append(r)
 
-        # Write EACH sequence to a SEPARATE file to ensure it's treated as a distinct strain
+        # Write EACH sequence to a SEPARATE file using the original NCBI header
         for i, rec in enumerate(valid_recs):
-            filepath = Path(output_dir) / f"{name_key}_{start_idx + i}.fasta"
+            acc = rec.id.split('.')[0] if '.' in rec.id else rec.id
+            safe = "".join(c if c.isalnum() or c in ' _-' else '_' for c in acc)[:80]
+            filepath = Path(output_dir) / f"{name_key}_{safe}.fasta"
+            counter = 1
+            while filepath.exists():
+                filepath = Path(output_dir) / f"{name_key}_{safe}_{counter}.fasta"
+                counter += 1
             with open(filepath, "w") as f:
                 SeqIO.write([rec], f, "fasta")
 
@@ -67,24 +73,33 @@ class SequenceFetcher:
 
     def fetch_sequences_chunk(self, id_list: List[str]) -> list:
         """Downloads a batch of sequences with retry logic."""
+        timeout = max(30, self.timeout)
         attempt = 0
         while attempt < self.max_retries:
             try:
+                socket.setdefaulttimeout(timeout)
                 with Entrez.efetch(
                     db="nucleotide",
                     id=id_list,
                     rettype="fasta",
                     retmode="text",
                 ) as handle:
-                    return list(SeqIO.parse(handle, "fasta"))
+                    records = list(SeqIO.parse(handle, "fasta"))
+                socket.setdefaulttimeout(None)
+                return records
             except KeyboardInterrupt:
-                attempt += 1
-                if attempt < self.max_retries:
-                    print(f"      ⚠️ Download interrupted, retrying ({attempt}/{self.max_retries})...")
-                    time.sleep(2 * attempt)
+                socket.setdefaulttimeout(None)
+                raise
             except Exception as e:
                 attempt += 1
-                time.sleep(2 * attempt) # Exponential backoff
+                err_msg = str(e).split('\n')[0][:120]
+                print(f"      ⚠️ Chunk download failed ({attempt}/{self.max_retries}): {err_msg}")
+                if attempt < self.max_retries:
+                    wait = 5 * attempt
+                    print(f"         Retrying in {wait}s...")
+                    time.sleep(wait)
+        socket.setdefaulttimeout(None)
+        print(f"      ❌ Failed after {self.max_retries} attempts.")
         return []
 
     def _auto_detect_genome_size(self, base_query: str) -> float:
@@ -116,8 +131,7 @@ class SequenceFetcher:
                     median_len = lengths[len(lengths) // 2]
                     return median_len / 1_000_000 # Return median in Mb
             except KeyboardInterrupt:
-                print(f"      ⚠️ Auto-detect interrupted (attempt {attempt+1}/2). Retrying...")
-                time.sleep(1)
+                raise
             except Exception as e:
                 print(f"      ❌ Auto-detect failed: {e}")
                 return 0.0

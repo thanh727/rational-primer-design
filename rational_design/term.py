@@ -829,7 +829,8 @@ def _create_params_interactive() -> Path:
     params["validation_background_sampling_size"] = int(Prompt.ask("  Validation background sample size", default="0"))
     params["design_max_candidates"] = int(Prompt.ask("  Max candidates", default="50"))
     params["cpu_cores"] = int(Prompt.ask("  CPU cores (0=auto)", default="0"))
-    params["design_min_conservation"] = float(Prompt.ask("  Min conservation", default="0.90"))
+    params["design_min_conservation"] = float(Prompt.ask("  Min conservation", default="0.75"))
+    params["auto_relax_constraints"] = Confirm.ask("  Auto-relax constraints?", default=True)
     params["min_sensitivity"] = float(Prompt.ask("  Min sensitivity (%)", default="90.0"))
     params["product_size_min"] = int(Prompt.ask("  Min product size (bp)", default="120"))
     params["product_size_max"] = int(Prompt.ask("  Max product size (bp)", default="400"))
@@ -837,6 +838,8 @@ def _create_params_interactive() -> Path:
     params["validation_max_cross_reactivity"] = float(Prompt.ask("  Max cross-reactivity (%)", default="5.0"))
     params["enable_blast"] = Confirm.ask("  Enable BLAST annotation?", default=False)
     params["degenerate_primers"] = Confirm.ask("  Enable degenerate primers?", default=False)
+    if params["degenerate_primers"]:
+        params["max_iupac_per_primer"] = int(Prompt.ask("  Max IUPAC positions per primer", default="2"))
 
     path = CONFIG_DIR / "parameters.json"
     with open(path, "w", encoding="utf-8") as f:
