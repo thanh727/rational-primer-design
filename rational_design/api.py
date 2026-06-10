@@ -37,7 +37,7 @@ class LocalPipelineRequest(BaseModel):
     background_path: str = Field(..., min_length=1)
     output_name: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
-    language: str = "vi"
+    language: str = "en"
     ai_base_url: str | None = None
     ai_model: str | None = None
 
@@ -55,7 +55,7 @@ class AutoPipelineRequest(BaseModel):
     backgrounds: list[QueryItem] = Field(..., min_length=1)
     output_name: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
-    language: str = "vi"
+    language: str = "en"
     ai_base_url: str | None = None
     ai_model: str | None = None
 
@@ -86,7 +86,7 @@ class LocalMultiplexRequest(BaseModel):
     background_path: str = Field(..., min_length=1)
     output_name: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
-    language: str = "vi"
+    language: str = "en"
     assay_type: str = "qPCR"
     ai_base_url: str | None = None
     ai_model: str | None = None
@@ -98,7 +98,7 @@ class AutoMultiplexRequest(BaseModel):
     backgrounds: list[QueryItem] = Field(default_factory=list)
     output_name: str | None = None
     parameters: dict[str, Any] = Field(default_factory=dict)
-    language: str = "vi"
+    language: str = "en"
     assay_type: str = "qPCR"
     ai_base_url: str | None = None
     ai_model: str | None = None
@@ -107,7 +107,7 @@ class AutoMultiplexRequest(BaseModel):
 class MultiplexAnalyzeRequest(BaseModel):
     folders: list[str] = Field(..., min_length=2)
     output_name: str | None = None
-    language: str = "vi"
+    language: str = "en"
     assay_type: str = "qPCR"
     ai_base_url: str | None = None
     ai_model: str | None = None
@@ -120,7 +120,7 @@ class ChatMessage(BaseModel):
 
 class ChatRequest(BaseModel):
     messages: list[ChatMessage] = Field(..., min_length=1)
-    language: str = "vi"
+    language: str = "en"
     ai_base_url: str = "http://localhost:11434/v1"
     ai_model: str = "llama3"
     email: str | None = None
@@ -294,7 +294,7 @@ def create_app() -> FastAPI:
         background_files: list[UploadFile] = File(...),
         output_name: str | None = Form(None),
         parameters: str = Form("{}"),
-        language: str = Form("vi"),
+        language: str = Form("en"),
         ai_base_url: str | None = Form(None),
         ai_model: str | None = Form(None),
     ) -> dict[str, Any]:
@@ -654,7 +654,7 @@ def _build_pipeline_command(
         "--params",
         str(params_path),
         "--language",
-        language if language in {"vi", "en"} else "vi",
+        language if language in {"vi", "en"} else "en",
     ]
     if ai_base_url:
         command.extend(["--ai_base_url", ai_base_url])
@@ -690,7 +690,7 @@ def _build_auto_pipeline_command(
         "--params",
         str(params_path),
         "--language",
-        language if language in {"vi", "en"} else "vi",
+        language if language in {"vi", "en"} else "en",
     ]
     if ai_base_url:
         command.extend(["--ai_base_url", ai_base_url])

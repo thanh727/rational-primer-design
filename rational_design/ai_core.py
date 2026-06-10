@@ -163,7 +163,7 @@ class AssayEvaluator:
     def evaluate_candidates(
         self,
         analytical_summary: str,
-        language: str = "vi",
+        language: str = "en",
         cross_target_context: list = None
     ) -> dict:
         """
@@ -282,7 +282,7 @@ class AIExpertAgent:
             "- Tuyệt đối KHÔNG đề xuất sử dụng phần mềm bên ngoài (SnapGene, Geneious, Primer3 web, BLAST web...). Mọi thứ đều chạy offline trong package này.\n"
             "- Bạn KHÔNG có quyền trực tiếp chạy lệnh hệ thống (terminal), bạn CHỈ CÓ QUYỀN duy nhất là xuất ra file cấu hình JSON để kích hoạt Pipeline C++ & Python chạy ngầm.\n\n"
             "QUY TẮC TƯ VẤN VÀ THỰC THI BẮT BUỘC:\n"
-            "1. BẮT BUỘC chọn TỪ 6 ĐẾN TỐI ĐA 10 loài/chủng nền (Background / Exclusivity strains) trong nhóm ngoại trừ (Exclusion Group) cho mọi đề xuất thiết kế để loại trừ phản ứng chéo chẩn đoán. Việc chọn số lượng từ 6-10 đảm bảo độ an toàn cao nhất nhưng không làm quá tải phần cứng hệ thống. TUYỆT ĐỐI KHÔNG chọn quá 10 nền.\n"
+            "1. NÊN chọn TỪ 6 ĐẾN TỐI ĐA 10 loài/chủng nền (Background / Exclusivity strains). **QUAN TRỌNG: BẮT BUỘC giữ NGUYÊN tất cả loài nền mà người dùng yêu cầu — KHÔNG được bỏ qua, thay thế, hay đổi tên loài của user.** Nếu người dùng cung cấp ít hơn 6 loài nền, hãy GIỮ NGUYÊN loài của họ và bổ sung thêm các loài khác để đạt ~6-10 (phải ghi ĐÚNG tên khoa học thật, ví dụ Streptococcus pneumoniae, Streptococcus pyogenes, Enterococcus faecalis, v.v. — KHÔNG được dùng tên giả như \"Proposed Background Species\"). Set run_immediately = true. TUYỆT ĐỐI KHÔNG chọn quá 10 nền.\n"
             "2. QUY TẮC TỰ ĐỘNG CHẠY PIPELINE (RUN IMMEDIATELY): Bạn phải bao gồm trường `\"run_immediately\": true` hoặc `false` trong tất cả các block JSON ẩn đề cử ở cuối câu trả lời của bạn. Hãy đặt `\"run_immediately\": true` nếu yêu cầu của người dùng đã cung cấp đầy đủ thông tin về các loài mục tiêu (target species) rõ ràng và không có bất kỳ sự mơ hồ nào, hệ thống sẽ tự động chạy pipeline ngay lập tức mà không cần chờ người dùng click hay duyệt. Chỉ đặt `\"run_immediately\": false` khi bạn cảm thấy thông tin chưa đủ, cần hỏi thêm người dùng trước khi cấu hình chạy.\n"
             "3. BẮT BUỘC ĐỊNH HƯỚNG WHOLE GENOME SCAN: Thuật toán K-mer Mining của hệ thống được thiết kế tối ưu nhất để tự động quét và tìm kiếm vùng bảo tồn trên toàn bộ hệ gen (Whole Genome). Do đó, TUYỆT ĐỐI ƯU TIÊN chọn `\"type\": \"genome\"` và chỉ ghi tên loài khoa học (VD: \"Salmonella enterica\", \"Bacillus cereus\") làm query thay vì nhắm vào các gene cụ thể (như invA, nheB), TRỪ KHI người dùng có yêu cầu chỉ định đích xác một gene cụ thể.\n"
             "4. BẠN PHẢI LUÔN LUÔN XUẤT RA KHỐI JSON CẤU HÌNH NGAY LẬP TỨC ở cuối câu trả lời của bạn khi đề xuất chạy mới hoặc kiểm chứng mồi, không cần đợi người dùng xác nhận.\n\n"
@@ -390,7 +390,7 @@ class AIExpertAgent:
             "- Do NOT recommend external software (e.g. SnapGene, Geneious, Primer3 web, online BLAST). Everything runs offline inside this package.\n"
             "- You do NOT have direct terminal command execution access. Your SOLE executive power is to output JSON configurations at the end of your response to trigger background C++ & Python pipelines.\n\n"
             "MANDATORY CONSULTATION & EXECUTION RULES:\n"
-            "1. You MUST select BETWEEN 6 AND MAXIMUM 10 background species/strains (exclusivity exclusion group) in all proposed online, validation, and multiplex designs. Selecting 6 to 10 backgrounds ensures robust screening for cross-reactivity without overloading the system's hardware limits. STRICTLY DO NOT EXCEED 10 BACKGROUNDS.\n"
+            "1. You SHOULD select BETWEEN 6 AND MAXIMUM 10 background species/strains. **CRITICAL: You MUST keep ALL background species the user requests — NEVER drop, replace, or rename the user's species.** If the user provides fewer than 6 backgrounds, KEEP their species and add more to reach ~6-10 (REAL scientific names only, e.g., Streptococcus pneumoniae, Streptococcus pyogenes, Enterococcus faecalis — NEVER use placeholder names like \"Proposed Background Species\"). Set run_immediately = true. STRICTLY DO NOT EXCEED 10 BACKGROUNDS.\n"
             "2. AUTOMATIC RUN TRIGGER (RUN IMMEDIATELY): You must include a `\"run_immediately\": true` or `false` boolean flag inside all JSON proposals. Set `\"run_immediately\": true` if the target species details supplied by the user are complete and unambiguous, enabling the system to trigger the pipeline immediately without waiting for user click approvals. Set `\"run_immediately\": false` only if clarifying target specifications are needed.\n"
             "3. MANDATORY WHOLE GENOME SCAN ORIENTATION: The system's K-mer Mining algorithm is highly optimized to automatically scan and discover conserved regions across entire genomes. Therefore, you MUST STRICTLY PRIORITIZE setting `\"type\": \"genome\"` and using only the scientific species name (e.g., \"Salmonella enterica\", \"Bacillus cereus\") as the query rather than targeting specific known marker genes (like invA, nheB), UNLESS the user explicitly dictates a specific target gene.\n"
             "4. YOU MUST ALWAYS OUTPUT THE HIDEEN PARAMETER CONFIGURATION JSON AT THE END OF YOUR RESPONSE immediately when proposing a new design or validation, without waiting for confirmation.\n\n"
@@ -475,7 +475,7 @@ class AIExpertAgent:
             "3. Respond professionally and strictly in English."
         )
 
-    def _build_chat_payload(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> list:
+    def _build_chat_payload(self, messages_history: list, expert_report: dict = None, language: str = "en") -> list:
         """Build the full messages payload including system instruction and expert context."""
         sys_msg = self.system_instruction_en if language == "en" else self.system_instruction_vi
         if expert_report:
@@ -555,7 +555,7 @@ class AIExpertAgent:
 
         return [{"role": "system", "content": sys_msg}] + messages_history
 
-    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "vi"):
+    def chat_stream(self, messages_history: list, expert_report: dict = None, language: str = "en"):
         """Send chat history to LLM and return a generator for streaming."""
         payload = self._build_chat_payload(messages_history, expert_report, language)
         response = self.backend.client.chat.completions.create(
@@ -567,7 +567,7 @@ class AIExpertAgent:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content is not None:
                 yield chunk.choices[0].delta.content
 
-    def chat(self, messages_history: list, expert_report: dict = None, language: str = "vi") -> str:
+    def chat(self, messages_history: list, expert_report: dict = None, language: str = "en") -> str:
         """Chat with the AI using non-streaming completion for reliability (avoids truncation with Ollama)."""
         payload = self._build_chat_payload(messages_history, expert_report, language)
         response = self.backend.client.chat.completions.create(

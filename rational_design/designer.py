@@ -11,6 +11,8 @@ import os
 import math
 import sys
 
+from .validator import find_primer_hits
+
 # --- SYSTEM OPTIMIZATION ---
 gc.set_threshold(100, 10, 10)
 WORKER_GENOMES = None
@@ -176,6 +178,9 @@ class PrimerDesigner:
                     pool.terminate()
                     print("\n   ⚠️ Design interrupted by user.")
                     sys.exit(1)
+                except (AssertionError, OSError, EOFError):
+                    print("\n   ⚠️ Multiprocessing error (connection issue). Trying to continue...")
+                    pool.terminate()
 
             min_cons = int(len(target_strains) * base_cons_ratio)
             before_cons = len(target_pool)
@@ -203,9 +208,9 @@ class PrimerDesigner:
             MAX_ELITE = 50000
             if len(valid_kmers) > MAX_ELITE:
                 sorted_kmers = sorted(valid_kmers.items(), key=lambda x: x[1], reverse=True)
-                elite_targets = set(h for h, count in sorted_kmers[:MAX_ELITE])
+                elite_targets = {h: count for h, count in sorted_kmers[:MAX_ELITE]}
             else:
-                elite_targets = set(valid_kmers.keys())
+                elite_targets = dict(valid_kmers)
 
             print(f"   │   {total_windows_all:,} windows scanned → {before_cons:,} unique valid k-mers")
             print(f"   │   Conservation ≥{base_cons_ratio:.0%} ({min_cons}/{len(target_strains)} strains): {len(elite_targets)} elite k-mers")
@@ -213,32 +218,58 @@ class PrimerDesigner:
             gc.collect()
 
             # ── PHASE 2 ──
+            anchors_for_pairing = None
+            bg_info = None
+
             if bg_strains and elite_targets:
-                bg_blacklist = set()
-                elite_frozen = frozenset(elite_targets)
+                bg_hit_counter = Counter()
+                elite_frozen = frozenset(elite_targets.keys())
 
                 with multiprocessing.Pool(self.cpu) as pool:
                     bg_step = 1
                     tasks = [(sid, seqs, self.k, elite_frozen, bg_step) for sid, seqs in bg_strains.items()]
                     try:
                         for arr in pool.imap_unordered(self._targeted_kmer_worker, tasks):
-                            bg_blacklist.update(arr)
+                            bg_hit_counter.update(arr)
                     except KeyboardInterrupt:
                         pool.terminate()
                         print("\n   ⚠️ Design interrupted by user.")
                         sys.exit(1)
+                    except (AssertionError, OSError, EOFError):
+                        print("\n   ⚠️ Background scan multiprocessing error. Continuing with partial data...")
+                        pool.terminate()
 
-                elite_targets = elite_targets - bg_blacklist
-                blacklisted = len(elite_frozen) - len(elite_targets)
-                pct = blacklisted / len(elite_frozen) * 100 if elite_frozen else 0
-                print(f"   │   Background: {blacklisted}/{len(elite_frozen)} blacklisted ({pct:.1f}%) → {len(elite_targets)} clean")
+                anchors_for_pairing, bg_info = self._select_anchors_for_pairing(
+                    elite_dict=elite_targets,
+                    bg_hit_counter=bg_hit_counter,
+                    n_background=len(bg_strains),
+                    n_target=len(target_strains),
+                )
+
+                self._log_background_screen(bg_info, bg_hit_counter, elite_targets)
             else:
                 print(f"   │   Background: none")
+                if elite_targets:
+                    anchors_for_pairing = set(elite_targets.keys())
+                    bg_info = {"mode_used": "strict_single_kmer_absence"}
 
             # ── PHASE 3 ──
-            if elite_targets:
-                raw_pairs = self._extract_raw_pairs(elite_targets, target_strains)
-                print(f"   │   Pairs: {len(raw_pairs)} found from {len(elite_targets)} anchors")
+            if anchors_for_pairing:
+                raw_pairs = self._extract_raw_pairs(anchors_for_pairing, target_strains)
+
+                use_rescue = bg_info and bg_info.get("mode_used") == "rescue_amplicon_level"
+                if use_rescue:
+                    n_before = len(raw_pairs)
+                    raw_pairs = self._filter_pairs_by_background_amplicon(raw_pairs, bg_strains)
+                    n_rejected = n_before - len(raw_pairs)
+                    print(f"   │   Rescue pairing:")
+                    print(f"   │     Anchors retained for pairing: {bg_info.get('rescue_anchor_total', len(anchors_for_pairing))}")
+                    print(f"   │     Target candidate pairs formed: {n_before}")
+                    print(f"   │     Background amplicon-positive pairs rejected: {n_rejected}")
+                    print(f"   │     Final assay-level clean pairs: {len(raw_pairs)}")
+                else:
+                    print(f"   │   Pairs: {len(raw_pairs)} found from {len(anchors_for_pairing)} anchors")
+
                 all_raw_pairs.extend(raw_pairs)
             else:
                 print(f"   │   Pairs: none (no clean primers)")
@@ -361,6 +392,120 @@ class PrimerDesigner:
         print(f"   ✅ Detected {len(data)} strain(s) from single FASTA input: {os.path.basename(input_path)}")
         return data
 
+    def _select_anchors_for_pairing(self, elite_dict, bg_hit_counter, n_background, n_target):
+        config = self.params
+        mode = config.get("background_filter_mode", "auto")
+        strict_min_clean = int(config.get("strict_min_clean_kmers", 500))
+        strict_min_ratio = float(config.get("strict_min_clean_ratio", 0.05))
+        rescue_top_n = int(config.get("rescue_top_kmers_for_pairing", 5000))
+        rescue_max_freq = float(config.get("rescue_max_single_primer_background_freq", 0.25))
+        rescue_penalty = float(config.get("rescue_background_penalty_weight", 300.0))
+
+        clean_count = 0
+        for h, cons_count in elite_dict.items():
+            if bg_hit_counter.get(h, 0) == 0:
+                clean_count += 1
+
+        elite_total = len(elite_dict)
+        clean_ratio = clean_count / max(elite_total, 1)
+
+        if mode == "strict":
+            use_rescue = False
+        elif mode == "amplicon_level":
+            use_rescue = True
+        else:
+            use_rescue = (clean_count < strict_min_clean or clean_ratio < strict_min_ratio)
+
+        if not use_rescue:
+            clean_hashes = {h for h in elite_dict if bg_hit_counter.get(h, 0) == 0}
+            return clean_hashes, {
+                "mode_used": "strict_single_kmer_absence",
+                "elite_total": elite_total,
+                "clean_total": clean_count,
+                "clean_ratio": clean_ratio,
+            }
+
+        scored = []
+        for h, cons_count in elite_dict.items():
+            bg_count = bg_hit_counter.get(h, 0)
+            bg_freq = bg_count / max(n_background, 1)
+            if bg_freq > rescue_max_freq:
+                continue
+            target_freq = cons_count / max(n_target, 1)
+            score = 100.0 * target_freq - rescue_penalty * bg_freq
+            scored.append((h, score))
+
+        scored.sort(key=lambda x: x[1], reverse=True)
+        rescue_anchors = {h for h, s in scored[:rescue_top_n]}
+
+        return rescue_anchors, {
+            "mode_used": "rescue_amplicon_level",
+            "elite_total": elite_total,
+            "clean_total": clean_count,
+            "clean_ratio": clean_ratio,
+            "rescue_anchor_total": len(rescue_anchors),
+        }
+
+    def _log_background_screen(self, bg_info, bg_hit_counter, elite_dict=None):
+        mode = bg_info.get("mode_used", "strict_single_kmer_absence")
+        elite_total = bg_info.get("elite_total", 0)
+        clean_total = bg_info.get("clean_total", 0)
+        clean_ratio = bg_info.get("clean_ratio", 0)
+
+        print(f"   │   Background screen:")
+        print(f"   │     Elite k-mers: {elite_total}")
+        print(f"   │     Clean after background: {clean_total}")
+        print(f"   │     Clean ratio: {clean_ratio:.1%}")
+
+        if mode == "rescue_amplicon_level":
+            strict_min_clean = int(self.params.get("strict_min_clean_kmers", 500))
+            print(f"   │")
+            print(f"   │   Strict pool too small: {clean_total} < {strict_min_clean}")
+            print(f"   │   Auto-rescue activated.")
+            print(f"   │")
+            print(f"   │   Rescue rule:")
+            print(f"   │     Single-primer background hits are annotated/penalized, not discarded.")
+            print(f"   │     Final specificity will be evaluated at amplicon/product level.")
+        else:
+            print(f"   │   Mode selected: strict single-kmer exclusion")
+
+    def _filter_pairs_by_background_amplicon(self, candidate_pairs, bg_strains):
+        final_max_hits = int(self.params.get("final_max_background_amplicon_hits", 0))
+        max_mm = int(self.params.get("max_mismatch", 2))
+        min_p = int(self.params.get("product_size_min", 70))
+        max_p = int(self.params.get("product_size_max", 350))
+
+        final_pairs = []
+        for pair in candidate_pairs:
+            fwd = pair['Fwd']
+            rev = pair['Rev']
+            rev_rc = str(Seq(rev).reverse_complement()).upper()
+
+            total_bg_amplicons = 0
+
+            for sid, seqs in bg_strains.items():
+                for seq_s in seqs:
+                    f_hits = find_primer_hits(seq_s, fwd, max_mm)
+                    r_hits = find_primer_hits(seq_s, rev_rc, max_mm)
+
+                    r_idx = 0
+                    r_len = len(r_hits)
+                    for f in f_hits:
+                        while r_idx < r_len and r_hits[r_idx]["pos"] <= f["pos"]:
+                            r_idx += 1
+                        for j in range(r_idx, r_len):
+                            r = r_hits[j]
+                            p_len = r["pos"] - f["pos"] + len(rev_rc)
+                            if p_len > max_p:
+                                break
+                            if min_p <= p_len:
+                                total_bg_amplicons += 1
+
+            if total_bg_amplicons <= final_max_hits:
+                final_pairs.append(pair)
+
+        return final_pairs
+
     def _extract_raw_pairs(self, elite_hashes, target_strains):
         ref_sid = list(target_strains.keys())[0]
         ref_seqs = target_strains[ref_sid]
@@ -439,6 +584,10 @@ class PrimerDesigner:
                 p.terminate()
                 print("\n   ⚠️ Design interrupted by user.")
                 sys.exit(1)
+            except (AssertionError, OSError, EOFError):
+                print("\n   ⚠️ Scoring multiprocessing error. Saving partial results...")
+                p.terminate()
+                results = []
 
         final_list = []
         for i, (p, res) in enumerate(zip(all_raw_pairs, results)):
