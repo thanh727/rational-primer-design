@@ -173,7 +173,14 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
         "enable_blast": True,
         "auto_relax_constraints": True,
         "degenerate_primers": True,
-        "max_iupac_per_primer": 2
+        "max_iupac_per_primer": 2,
+        "background_filter_mode": "auto",
+        "strict_min_clean_kmers": 500,
+        "strict_min_clean_ratio": 0.05,
+        "rescue_top_kmers_for_pairing": 5000,
+        "rescue_max_single_primer_background_freq": 0.25,
+        "rescue_background_penalty_weight": 300.0,
+        "final_max_background_amplicon_hits": 0
 
     }
 

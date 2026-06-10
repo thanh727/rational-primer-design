@@ -1942,9 +1942,9 @@ th {
 .proposal-item-value {
   color: var(--text);
   font-weight: 700;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
 }
 
 .proposal-json {

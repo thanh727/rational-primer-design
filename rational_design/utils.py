@@ -3,6 +3,64 @@ import ctypes
 import time
 import sys
 import platform
+import re
+
+EMOJI_MAP = {
+    '\U0001f680': '[START]',    # 🚀
+    '\U0001f4ca': '[DATA]',     # 📊
+    '\u2705':     '[OK]',       # ✅
+    '\u26a0\ufe0f': '[WARN]',   # ⚠️
+    '\u274c':     '[ERR]',      # ❌
+    '\U0001f4c2': '[FOLDER]',   # 📂
+    '\U0001f4c4': '[FILE]',     # 📄
+    '\U0001f512': '[LOCK]',     # 🔒
+    '\U0001f9ec': '[DNA]',      # 🧬
+    '\U0001f552': '[TIME]',     # 🕒
+    '\u25b6\ufe0f': '[PLAY]',   # ▶️
+    '\U0001f504': '[CYCLE]',    # 🔄
+    '\U0001f916': '[AI]',       # 🤖
+    '\U0001f517': '[LINK]',     # 🔗
+    '\U0001f9f9': '[CLEAN]',    # 🧹
+    '\U0001f50e': '[SEARCH]',   # 🔎
+    '\U0001f52c': '[MICROSCOPE]', # 🔬
+    '\U0001f6ab': '[STOP]',     # 🚫
+    '\U0001f4be': '[SAVE]',     # 💾
+    '\U0001f4cf': '[RULER]',    # 📏
+    '\U0001f4c9': '[DOWN]',     # 📉
+    '\U0001f30d': '[GLOBE]',    # 🌍
+    '\U0001f310': '[GLOBE]',    # 🌐
+    '\U0001f3af': '[TARGET]',   # 🎯
+    '\U0001f389': '[DONE]',     # 🎉
+    '\U0001f6a8': '[ALERT]',    # 🚨
+    '\U0001f4c1': '[FOLDER]',   # 📁
+    '\U0001f9ea': '[LAB]',      # 🧪
+    '\U0001f50d': '[SEARCH]',   # 🔍
+    '\U0001f4b0': '[MONEY]',    # 💰
+    '\u2b50':     '[STAR]',     # ⭐
+    '\u26a1':     '[BOLT]',     # ⚡
+    '\U0001f44d': '[THUMBS_UP]', # 👍
+    '\U0001f6b9': '[INFO]',     # 🔹
+    '\U0001f3b0': '[SLOT]',     # 🎰
+    '\U0001f3e0': '[HOME]',     # 🏠
+    '\U0001f6b2': '[BIKE]',     # 🚲
+    '\U0001f511': '[KEY]',      # 🔑
+}
+
+_EMOJI_RE = re.compile('|'.join(re.escape(e) for e in EMOJI_MAP))
+
+def _replace_emojis(text):
+    return _EMOJI_RE.sub(lambda m: EMOJI_MAP[m.group(0)], text)
+
+def ensure_utf8_console():
+    if platform.system() == 'Windows':
+        try:
+            sys.stdout.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
+        try:
+            sys.stderr.reconfigure(encoding='utf-8')
+        except Exception:
+            pass
 
 def nuclear_ram_flush():
     """Force system to clear old data traces in RAM."""
@@ -17,13 +75,18 @@ def nuclear_ram_flush():
 
 class DualLogger(object):
     def __init__(self, filename):
+        ensure_utf8_console()
         self.terminal = sys.stdout
         self.log = open(filename, "w", encoding='utf-8')
     def write(self, message):
         try:
             self.terminal.write(message)
         except UnicodeEncodeError:
-            self.terminal.write(message.encode(self.terminal.encoding, errors='replace').decode(self.terminal.encoding))
+            safe = _replace_emojis(message)
+            try:
+                self.terminal.write(safe)
+            except UnicodeEncodeError:
+                self.terminal.write(safe.encode(self.terminal.encoding, errors='replace').decode(self.terminal.encoding))
         self.log.write(message)
         self.log.flush()
     def flush(self):

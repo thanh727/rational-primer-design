@@ -2752,8 +2752,8 @@ function ProposalSummary({ proposal, tx }: { proposal: Record<string, unknown>; 
   } else if (action === "propose_design" || action === "propose_validation") {
     const targets = proposalList(proposal, "targets", "target");
     const backgrounds = proposalList(proposal, "backgrounds", "background");
-    if (targets.length > 0) items.push({ label: tx.targetQueries, value: targets.map((t: unknown) => typeof t === "object" && t ? (t as { query?: string }).query ?? "" : String(t)).join(", ") });
-    if (backgrounds.length > 0) items.push({ label: tx.backgroundQueries, value: backgrounds.map((b: unknown) => typeof b === "object" && b ? (b as { query?: string }).query ?? "" : String(b)).join(", ") });
+    if (targets.length > 0) items.push({ label: tx.targetQueries, value: targets.map((t: unknown) => typeof t === "object" && t ? (t as { query?: string }).query ?? "" : String(t)).join("\n") });
+    if (backgrounds.length > 0) items.push({ label: tx.backgroundQueries, value: backgrounds.map((b: unknown) => typeof b === "object" && b ? (b as { query?: string }).query ?? "" : String(b)).join("\n") });
   }
 
   if (proposal.min_sensitivity) items.push({ label: tx.min_sensitivity, value: `${proposal.min_sensitivity}%` });
