@@ -1,0 +1,4 @@
+{
+  "base_url": "emma4:latest",
+  "model": "gemma4:latest"
+}
