@@ -1228,6 +1228,15 @@ def main():
     cmd_val.add_argument("-w", "--workers", type=int, default=8, help="Số nhân CPU")
     cmd_val.add_argument("--max_len", type=int, default=1500, help="Độ dài Amplicon tối đa")
 
+    # Register design_probes command
+    cmd_probe = subparsers.add_parser("design_probes")
+    cmd_probe.add_argument("-c", "--config", required=True, help="Tệp primers.csv chứa danh sách cặp mồi")
+    cmd_probe.add_argument("-t", "--target", required=True, help="Thư mục Target Genomes")
+    cmd_probe.add_argument("-b", "--background", help="Thư mục Background Genomes (tùy chọn)")
+    cmd_probe.add_argument("-o", "--output", default="designed_probes.csv", help="Tệp CSV đầu ra")
+    cmd_probe.add_argument("-e", "--error", type=int, default=4, help="Mismatch tối đa")
+    cmd_probe.add_argument("--max_len", type=int, default=1500, help="Độ dài Amplicon tối đa")
+
     # Register multiplex_analyze command
     cmd_multi = subparsers.add_parser("multiplex_analyze")
     cmd_multi.add_argument("-f", "--folders", nargs="+", required=True, help="Danh sách các thư mục targets kết quả thiết kế")
@@ -1249,6 +1258,16 @@ def main():
         sys.argv = [sys.argv[0]] + sys.argv[2:]
         from .insilico_pcr_advanced import main as run_advanced_pcr
         run_advanced_pcr()
+    elif args.command == "design_probes":
+        from .probe_designer import design_probes_for_primers
+        design_probes_for_primers(
+            primers_csv=args.config,
+            target_dir=args.target,
+            bg_dir=args.background,
+            output_csv=args.output,
+            max_error=args.error,
+            max_len=args.max_len
+        )
     elif args.command == "multiplex_analyze":
         run_multiplex_analysis(args)
     elif args.command == "term":

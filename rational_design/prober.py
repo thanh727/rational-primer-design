@@ -37,6 +37,24 @@ def _has_homopolymer(seq, limit=4):
             last = base
     return False
 
+def _gc_percent_degenerate(seq):
+    seq_str = str(seq).upper()
+    if not seq_str:
+        return 0.0
+    from .validator import IUPAC as v_iupac
+    gc_fraction = 0.0
+    for c in seq_str:
+        if c in ('G', 'C'):
+            gc_fraction += 1.0
+        elif c in ('A', 'T'):
+            gc_fraction += 0.0
+        elif c in v_iupac:
+            bases = v_iupac[c]
+            gc_fraction += sum(1 for b in bases if b in ('G', 'C')) / len(bases)
+        else:
+            gc_fraction += 0.5
+    return (gc_fraction / len(seq_str)) * 100
+
 class ProbeSelector:
     def design(self, detail_csv, output_csv, summary_csv, params):
         print("--- 🌍 PROBER: Full Genomic Signature Atlas Generation ---")
@@ -69,6 +87,7 @@ class ProbeSelector:
                 p_tm_base,
                 row['Forward Primer'],
                 row['Reverse Primer'],
+                params
             )
 
             final_assays.append({
@@ -149,7 +168,7 @@ class ProbeSelector:
             dnac2=0
         )
 
-    def _find_best_probe(self, amplicons, p_tm, fwd_primer="", rev_primer=""):
+    def _find_best_probe(self, amplicons, p_tm, fwd_primer="", rev_primer="", params=None):
         ref_amp = min(amplicons, key=len)
         left = max(15, len(str(fwd_primer)))
         right = max(15, len(str(rev_primer)))
@@ -159,24 +178,65 @@ class ProbeSelector:
         candidates = []
         from .multiplex import check_dimer, check_hairpin
 
+        degenerate_probes = params.get("degenerate_primers", False) if params else False
+        max_iupac = int(params.get("max_iupac_per_primer", 2)) if params else 2
+
         for length in range(20, 26):
             for i in range(len(search_zone) - length + 1):
                 sub = search_zone[i : i+length]
-                tm = self._calc_tm(sub)
-                gc = _gc_percent(sub)
+                probe_seq = None
+
+                if any(sub not in amp for amp in amplicons):
+                    if degenerate_probes:
+                        # Extract matching segments from amplicons and build consensus
+                        candidate_seqs = []
+                        fwd_len = len(fwd_primer)
+                        rev_len = len(rev_primer)
+                        import Levenshtein
+                        for amp in amplicons:
+                            amp_inner = amp[fwd_len : len(amp) - rev_len]
+                            ref_inner = ref_amp[fwd_len : len(ref_amp) - rev_len]
+                            if len(amp_inner) == len(ref_inner):
+                                rel_pos = left + i - fwd_len
+                                candidate_seqs.append(amp_inner[rel_pos : rel_pos + length])
+                            else:
+                                best_sub = None
+                                best_dist = 999
+                                for k in range(len(amp_inner) - length + 1):
+                                    candidate = amp_inner[k : k + length]
+                                    dist = Levenshtein.distance(sub, candidate)
+                                    if dist < best_dist:
+                                        best_dist = dist
+                                        best_sub = candidate
+                                if best_sub:
+                                    candidate_seqs.append(best_sub)
+
+                        if len(candidate_seqs) == len(amplicons):
+                            from .utils import generate_iupac_consensus
+                            probe_seq = generate_iupac_consensus(candidate_seqs, max_iupac=max_iupac)
+                        else:
+                            continue
+                    else:
+                        continue
+                else:
+                    probe_seq = sub
+
+                if not probe_seq:
+                    continue
+
+                tm = self._calc_tm(probe_seq)
+                gc = _gc_percent_degenerate(probe_seq)
                 if not (p_tm + 5 <= tm <= p_tm + 12):
                     continue
                 if not (35 <= gc <= 65):
                     continue
-                if sub.startswith("G") or _has_homopolymer(sub):
+                if probe_seq.startswith("G") or _has_homopolymer(probe_seq):
                     continue
-                if any(sub not in amp for amp in amplicons):
+                if check_hairpin(probe_seq) >= 4:
                     continue
-                if check_hairpin(sub) >= 4:
+                if fwd_primer and check_dimer(probe_seq, str(fwd_primer))[1] >= 4:
                     continue
-                if fwd_primer and check_dimer(sub, str(fwd_primer))[1] >= 4:
+                if rev_primer and check_dimer(probe_seq, str(rev_primer))[1] >= 4:
                     continue
-                if rev_primer and check_dimer(sub, str(rev_primer))[1] >= 4:
-                    continue
-                candidates.append({'seq': sub, 'tm': tm, 'gc': gc})
+                candidates.append({'seq': probe_seq, 'tm': tm, 'gc': gc})
         return sorted(candidates, key=lambda x: (abs(x['tm'] - (p_tm + 8)), abs(x['gc'] - 50)))[0] if candidates else None

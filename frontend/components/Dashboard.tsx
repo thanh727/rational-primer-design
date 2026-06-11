@@ -31,6 +31,7 @@ type PrimerPair = {
   name: string;
   fwd: string;
   rev: string;
+  probe?: string;
 };
 
 type ChatMessage = {
@@ -178,6 +179,9 @@ const I18N: Record<Lang, Record<string, string>> = {
     autoTitle: "Thiết kế tự động bằng từ khóa NCBI",
     aiTitle: "Thiết kế với AI",
     validateTitle: "Kiểm chứng bộ mồi đã biết",
+    validationAction: "Chế độ thực hiện",
+    validateMode: "Kiểm chứng mồi (Validate)",
+    probeMode: "Thiết kế Probe cho mồi (Design Probes)",
     multiplexTitle: "Thiết kế PCR đa mồi",
     targetPath: "Bộ genome đích",
     backgroundPath: "Bộ genome nền",
@@ -253,6 +257,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     primerName: "Tên marker",
     fwd: "Mồi xuôi",
     rev: "Mồi ngược",
+    probe: "Đoạn dò (Probe)",
     addPrimer: "Thêm mồi",
     maxMismatch: "Sai khác tối đa",
     maxLen: "Amplicon tối đa",
@@ -367,6 +372,9 @@ const I18N: Record<Lang, Record<string, string>> = {
     autoTitle: "Automatic design from NCBI keywords",
     aiTitle: "Design with AI chat",
     validateTitle: "Validate known primers",
+    validationAction: "Action Mode",
+    validateMode: "Validate Primers",
+    probeMode: "Design Probes for Primers",
     multiplexTitle: "Multiplex PCR design",
     targetPath: "Target genomes",
     backgroundPath: "Background genomes",
@@ -442,6 +450,7 @@ const I18N: Record<Lang, Record<string, string>> = {
     primerName: "Marker name",
     fwd: "Forward",
     rev: "Reverse",
+    probe: "Probe (Optional)",
     addPrimer: "Add primer",
     maxMismatch: "Max mismatch",
     maxLen: "Max amplicon",
@@ -565,7 +574,8 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   const [backgrounds, setBackgrounds] = useState<QueryItem[]>([{ query: "", size: 0, count: 50, type: "genome" }]);
 
   const [validationMode, setValidationMode] = useState<DataMode>("local");
-  const [validationPrimers, setValidationPrimers] = useState<PrimerPair[]>([{ name: "M1", fwd: "", rev: "" }]);
+  const [validationAction, setValidationAction] = useState<"validate" | "probe">("validate");
+  const [validationPrimers, setValidationPrimers] = useState<PrimerPair[]>([{ name: "M1", fwd: "", rev: "", probe: "" }]);
   const [validationTarget, setValidationTarget] = useState("test_data/target");
   const [validationBackground, setValidationBackground] = useState("test_data/background");
   const [validationTargets, setValidationTargets] = useState<QueryItem[]>([{ query: "", size: 0, count: 50, type: "genome" }]);
@@ -891,6 +901,7 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
       extract_sequence: extractSeq,
       max_mismatch: maxMismatch,
       max_len: maxLen,
+      action: validationAction === "probe" ? "design-probes" : "validate",
     };
     await createJob(
       "/api/jobs/validate",
@@ -1321,6 +1332,8 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
                     tx={tx}
                     mode={validationMode}
                     setMode={setValidationMode}
+                    action={validationAction}
+                    setAction={setValidationAction}
                     primers={validationPrimers}
                     setPrimers={setValidationPrimers}
                     targetPath={validationTarget}
@@ -2119,6 +2132,8 @@ function ValidationMode(props: {
   tx: Record<string, string>;
   mode: DataMode;
   setMode: (value: DataMode) => void;
+  action: "validate" | "probe";
+  setAction: (value: "validate" | "probe") => void;
   primers: PrimerPair[];
   setPrimers: (items: PrimerPair[]) => void;
   targetPath: string;
@@ -2147,8 +2162,21 @@ function ValidationMode(props: {
   return (
     <form className="panel" onSubmit={props.onSubmit}>
       <PanelTitle title={props.tx.validateTitle} />
-      <Segmented<DataMode> value={props.mode} options={["local", "auto"]} label={props.tx.sourceMode} tx={props.tx} onChange={props.setMode} />
-      <PrimerEditor tx={props.tx} primers={props.primers} setPrimers={props.setPrimers} />
+      <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+        <Segmented<"validate" | "probe">
+          value={props.action}
+          options={["validate", "probe"]}
+          label={props.tx.validationAction}
+          tx={{
+            ...props.tx,
+            validate: props.tx.validateMode,
+            probe: props.tx.probeMode,
+          }}
+          onChange={props.setAction}
+        />
+        <Segmented<DataMode> value={props.mode} options={["local", "auto"]} label={props.tx.sourceMode} tx={props.tx} onChange={props.setMode} />
+      </div>
+      <PrimerEditor tx={props.tx} primers={props.primers} setPrimers={props.setPrimers} action={props.action} />
       {props.mode === "local" ? (
         <div className="field-grid">
           <PathInput label={props.tx.targetPath} value={props.targetPath} onChange={props.setTargetPath} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
@@ -2291,7 +2319,7 @@ function QueryEditor(props: {
   );
 }
 
-function PrimerEditor(props: { tx: Record<string, string>; primers: PrimerPair[]; setPrimers: (items: PrimerPair[]) => void }) {
+function PrimerEditor(props: { tx: Record<string, string>; primers: PrimerPair[]; setPrimers: (items: PrimerPair[]) => void; action?: "validate" | "probe" }) {
   function update(index: number, patch: Partial<PrimerPair>) {
     props.setPrimers(props.primers.map((item, i) => (i === index ? { ...item, ...patch } : item)));
   }
@@ -2300,15 +2328,18 @@ function PrimerEditor(props: { tx: Record<string, string>; primers: PrimerPair[]
       <div className="subheading">{props.tx.validate}</div>
       {props.primers.map((item, index) => (
         <div className="primer-row" key={index}>
-          <input aria-label={props.tx.primerName} value={item.name} onChange={(event) => update(index, { name: event.target.value })} />
-          <input aria-label={props.tx.fwd} value={item.fwd} onChange={(event) => update(index, { fwd: event.target.value })} />
-          <input aria-label={props.tx.rev} value={item.rev} onChange={(event) => update(index, { rev: event.target.value })} />
+          <input aria-label={props.tx.primerName} placeholder={props.tx.primerName} value={item.name} onChange={(event) => update(index, { name: event.target.value })} />
+          <input aria-label={props.tx.fwd} placeholder={props.tx.fwd} value={item.fwd} onChange={(event) => update(index, { fwd: event.target.value })} />
+          <input aria-label={props.tx.rev} placeholder={props.tx.rev} value={item.rev} onChange={(event) => update(index, { rev: event.target.value })} />
+          {props.action !== "probe" && (
+            <input aria-label={props.tx.probe} placeholder={props.tx.probe} value={item.probe || ""} onChange={(event) => update(index, { probe: event.target.value })} />
+          )}
           <button className="ghost" type="button" onClick={() => props.setPrimers(props.primers.filter((_, i) => i !== index))}>
             {props.tx.remove}
           </button>
         </div>
       ))}
-      <button className="ghost" type="button" onClick={() => props.setPrimers([...props.primers, { name: `M${props.primers.length + 1}`, fwd: "", rev: "" }])}>
+      <button className="ghost" type="button" onClick={() => props.setPrimers([...props.primers, { name: `M${props.primers.length + 1}`, fwd: "", rev: "", probe: "" }])}>
         {props.tx.addPrimer}
       </button>
     </div>
@@ -2739,7 +2770,10 @@ function validEmail(value: string) {
 
 function validPrimerPair(item: PrimerPair) {
   const allowed = /^[ATGCRYSWKMNBDHV]+$/i;
-  return allowed.test(item.fwd.trim()) && allowed.test(item.rev.trim()) && item.fwd.trim().length >= 8 && item.rev.trim().length >= 8;
+  const fwdOk = allowed.test(item.fwd.trim()) && item.fwd.trim().length >= 8;
+  const revOk = allowed.test(item.rev.trim()) && item.rev.trim().length >= 8;
+  const probeOk = !item.probe || !item.probe.trim() || (allowed.test(item.probe.trim()) && item.probe.trim().length >= 8);
+  return fwdOk && revOk && probeOk;
 }
 
 function ProposalSummary({ proposal, tx }: { proposal: Record<string, unknown>; tx: Record<string, string> }) {

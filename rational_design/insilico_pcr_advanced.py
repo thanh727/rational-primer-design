@@ -33,22 +33,58 @@ def is_match(q, t):
     """Check primer match with IUPAC characters."""
     return t in IUPAC.get(q, {q})
 
+def _expand_degenerate_seed(seed_seq):
+    seed_seq = str(seed_seq).upper()
+    results = [""]
+    for char in seed_seq:
+        bases = IUPAC.get(char, {char})
+        next_results = []
+        for r in results:
+            for b in bases:
+                next_results.append(r + b)
+        results = next_results
+    return [s.encode() for s in results]
+
 class IndustrialEngine:
-    def __init__(self, name, fwd, rev, template_path='', max_error=4, max_p=1500, extract_seq=False):
+    def __init__(self, name, fwd, rev, template_path='', max_error=4, max_p=1500, extract_seq=False, probe=''):
         self.name = name
         self.fwd, self.rev = fwd.strip().upper(), rev.strip().upper()
+        self.probe = probe.strip().upper() if probe else ''
         self.f_rc = str(Seq(self.fwd).reverse_complement()).upper()
         self.r_rc = str(Seq(self.rev).reverse_complement()).upper()
         self.max_error, self.max_p, self.extract_seq = max_error, max_p, extract_seq
         self.template_path = template_path
         
-        # 8bp seeds at 3' end for fast scanning using Byte Matching
+        # 8bp seeds at 3' end, expanded if they contain degenerate IUPAC bases
         self.seeds = {
-            "f": self.fwd[-8:].encode(), 
-            "f_rc": self.f_rc[-8:].encode(),
-            "r": self.rev[-8:].encode(), 
-            "r_rc": self.r_rc[-8:].encode()
+            "f": _expand_degenerate_seed(self.fwd[-8:]), 
+            "f_rc": _expand_degenerate_seed(self.f_rc[:8]),
+            "r": _expand_degenerate_seed(self.rev[-8:]), 
+            "r_rc": _expand_degenerate_seed(self.r_rc[:8])
         }
+
+    def check_probe_match(self, amplicon_seq):
+        """Check if the probe matches inside the amplicon sequence.
+        Supports IUPAC degenerate bases.
+        Allows up to 2 mismatches by default.
+        """
+        if not self.probe:
+            return True
+        
+        probe_len = len(self.probe)
+        amp_len = len(amplicon_seq)
+        if amp_len < probe_len:
+            return False
+            
+        probe_rc = str(Seq(self.probe).reverse_complement()).upper()
+        
+        for i in range(amp_len - probe_len + 1):
+            sub = amplicon_seq[i : i + probe_len]
+            err_fwd = sum(1 for j in range(probe_len) if not is_match(self.probe[j], sub[j]))
+            err_rev = sum(1 for j in range(probe_len) if not is_match(probe_rc[j], sub[j]))
+            if err_fwd <= 2 or err_rev <= 2:
+                return True
+        return False
 
     def get_mm(self, seq_b, primer_str, seed_pos):
         """Calculate detailed mismatch for a binding site."""
@@ -73,8 +109,8 @@ class IndustrialEngine:
             with open(path, 'rb') as f:
                 raw_content = f.read().upper()
 
-            has_f = (self.seeds["f"] in raw_content or self.seeds["f_rc"] in raw_content)
-            has_r = (self.seeds["r"] in raw_content or self.seeds["r_rc"] in raw_content)
+            has_f = any(s in raw_content for s in self.seeds["f"]) or any(s in raw_content for s in self.seeds["f_rc"])
+            has_r = any(s in raw_content for s in self.seeds["r"]) or any(s in raw_content for s in self.seeds["r_rc"])
 
             if not (has_f and has_r) and not is_target:
                 return [sid, group_label, self.name, "Absent", "N/A", 0, "N/A", 0, "N/A", "N/A"]
@@ -86,30 +122,56 @@ class IndustrialEngine:
                     seq_b = str(seq_obj).upper().encode()
                     
                     # Check forward primer pair (F -> R_rc)
-                    if (self.seeds["f"] in seq_b) and (self.seeds["r_rc"] in seq_b):
-                        f_pos = [i for i in range(len(seq_b)) if seq_b.startswith(self.seeds["f"], i)]
-                        r_pos = [i for i in range(len(seq_b)) if seq_b.startswith(self.seeds["r_rc"], i)]
+                    has_f_seed = any(s in seq_b for s in self.seeds["f"])
+                    has_r_rc_seed = any(s in seq_b for s in self.seeds["r_rc"])
+                    if has_f_seed and has_r_rc_seed:
+                        f_pos = []
+                        for s in self.seeds["f"]:
+                            f_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
+                        r_pos = []
+                        for s in self.seeds["r_rc"]:
+                            r_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
                         for fi in f_pos:
                             for ri in r_pos:
-                                if 0 < (ri - fi) < self.max_p:
-                                    mm = self.get_mm(seq_b, self.fwd, fi) + self.get_mm(seq_b, self.r_rc, ri)
+                                start_pos = fi - (len(self.fwd) - 8)
+                                end_pos = ri + len(self.rev)
+                                if 0 < (end_pos - start_pos) < self.max_p:
+                                    fwd_bind = seq_b[start_pos : fi + 8].decode()
+                                    rev_bind = seq_b[ri : end_pos].decode()
+                                    mm = sum(1 for j in range(len(self.fwd)) if not is_match(self.fwd[j], fwd_bind[j])) + \
+                                         sum(1 for j in range(len(self.rev)) if not is_match(self.r_rc[j], rev_bind[j]))
                                     if mm <= self.max_error:
-                                        size = ri - fi + 8
-                                        seq = seq_b[fi-(len(self.fwd)-8):ri+8].decode() if self.extract_seq else "N/A"
-                                        all_hits.append([mm, size, "Standard", seq])
+                                        amp_seq = seq_b[start_pos:end_pos].decode()
+                                        if self.check_probe_match(amp_seq):
+                                            size = end_pos - start_pos
+                                            seq = amp_seq if self.extract_seq else "N/A"
+                                            all_hits.append([mm, size, "Standard", seq])
 
                     # Check reverse primer pair (R -> F_rc)
-                    if (self.seeds["r"] in seq_b) and (self.seeds["f_rc"] in seq_b):
-                        r_pos = [i for i in range(len(seq_b)) if seq_b.startswith(self.seeds["r"], i)]
-                        f_pos = [i for i in range(len(seq_b)) if seq_b.startswith(self.seeds["f_rc"], i)]
+                    has_r_seed = any(s in seq_b for s in self.seeds["r"])
+                    has_f_rc_seed = any(s in seq_b for s in self.seeds["f_rc"])
+                    if has_r_seed and has_f_rc_seed:
+                        r_pos = []
+                        for s in self.seeds["r"]:
+                            r_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
+                        f_pos = []
+                        for s in self.seeds["f_rc"]:
+                            f_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
                         for ri in r_pos:
                             for fi in f_pos:
-                                if 0 < (fi - ri) < self.max_p:
-                                    mm = self.get_mm(seq_b, self.rev, ri) + self.get_mm(seq_b, self.f_rc, fi)
+                                start_pos = ri - (len(self.rev) - 8)
+                                end_pos = fi + len(self.fwd)
+                                if 0 < (end_pos - start_pos) < self.max_p:
+                                    rev_bind = seq_b[start_pos : ri + 8].decode()
+                                    fwd_bind = seq_b[fi : end_pos].decode()
+                                    mm = sum(1 for j in range(len(self.rev)) if not is_match(self.rev[j], rev_bind[j])) + \
+                                         sum(1 for j in range(len(self.fwd)) if not is_match(self.f_rc[j], fwd_bind[j]))
                                     if mm <= self.max_error:
-                                        size = fi - ri + 8
-                                        seq = seq_b[ri-(len(self.rev)-8):fi+8].decode() if self.extract_seq else "N/A"
-                                        all_hits.append([mm, size, "Reverse-Pair", seq])
+                                        amp_seq = seq_b[start_pos:end_pos].decode()
+                                        if self.check_probe_match(amp_seq):
+                                            size = end_pos - start_pos
+                                            seq = amp_seq if self.extract_seq else "N/A"
+                                            all_hits.append([mm, size, "Reverse-Pair", seq])
 
             if all_hits:
                 b = sorted(all_hits, key=lambda x: x[0])[0]
@@ -159,8 +221,16 @@ def main():
         writer.writerow(["id", "group", "marker", "status", "mismatch", "amplicon_size", "pair_type", "copy_number", "identity", "amplicon_sequence"])
         
         for p in primers:
-            print(f"▶️ Processing Marker: {p['name']}...")
-            engine = IndustrialEngine(p['name'], p['fwd'], p['rev'], p.get('template', ''), args.error, args.max_len, args.seq)
+            engine = IndustrialEngine(
+                p['name'], 
+                p['fwd'], 
+                p['rev'], 
+                p.get('template', ''), 
+                args.error, 
+                args.max_len, 
+                args.seq,
+                probe=p.get('probe', '')
+            )
             
             workers = args.workers if args.workers > 0 else max(1, multiprocessing.cpu_count() - 2)
             with ProcessPoolExecutor(max_workers=workers) as executor:

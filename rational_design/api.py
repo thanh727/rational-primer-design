@@ -65,6 +65,7 @@ class PrimerPair(BaseModel):
     fwd: str = Field(..., min_length=8)
     rev: str = Field(..., min_length=8)
     template: str | None = None
+    probe: str | None = None
 
 
 class ValidationRequest(BaseModel):
@@ -79,6 +80,7 @@ class ValidationRequest(BaseModel):
     max_mismatch: int = Field(default=4, ge=0, le=12)
     workers: int = Field(default=0, ge=0, le=256)
     max_len: int = Field(default=1500, ge=50, le=10000)
+    action: str = "validate"
 
 
 class LocalMultiplexRequest(BaseModel):
@@ -372,6 +374,8 @@ def create_app() -> FastAPI:
         job = _get_job_or_404(job_id)
         output_dir = Path(job["output_dir"])
         report_dir = output_dir / "4_validation_report"
+        designed_probes_csv = output_dir / "designed_probes.csv"
+        report_csv = designed_probes_csv if designed_probes_csv.exists() else (output_dir / "PCR_Advanced_Report.csv")
         return {
             "job": job,
             "summary": _read_json_if_exists(report_dir / "validation_summary.json"),
@@ -380,7 +384,7 @@ def create_app() -> FastAPI:
             "ai_report": _read_json_if_exists(output_dir / "ai_expert_report.json"),
             "final_assays": _read_csv_preview(output_dir / "FINAL_ASSAY.csv"),
             "candidate_summary": _read_csv_preview(output_dir / "3_validation" / "master_pcr_results_summary.csv"),
-            "known_primer_validation": _read_csv_preview(output_dir / "PCR_Advanced_Report.csv"),
+            "known_primer_validation": _read_csv_preview(report_csv),
             "known_primer_summary": _read_json_if_exists(report_dir / "per_primer_summary.json"),
             "multiplex_kits": _read_csv_preview(output_dir / "MULTIPLEX_KITS.csv"),
             "multiplex_details": _read_json_if_exists(output_dir / "multiplex_details.json"),
@@ -712,16 +716,37 @@ def _create_validation_job(request: ValidationRequest) -> dict[str, Any]:
             background_path = Path(request.background_path).expanduser().resolve()
             _validate_input_path(background_path, "background_path")
 
-        command = _build_validate_primers_command(
-            primers_path=primers_path,
-            target_path=target_path,
-            background_path=background_path,
-            output_csv=output_dir / "PCR_Advanced_Report.csv",
-            extract_sequence=request.extract_sequence,
-            max_mismatch=request.max_mismatch,
-            workers=request.workers,
-            max_len=request.max_len,
-        )
+        if request.action == "design-probes":
+            command = [
+                sys.executable,
+                "-u",
+                "-m",
+                "rational_design.cli",
+                "design_probes",
+                "-c",
+                str(primers_path),
+                "-t",
+                str(target_path),
+                "-o",
+                str(output_dir / "designed_probes.csv"),
+                "-e",
+                str(request.max_mismatch),
+                "--max_len",
+                str(request.max_len),
+            ]
+            if background_path:
+                command.extend(["-b", str(background_path)])
+        else:
+            command = _build_validate_primers_command(
+                primers_path=primers_path,
+                target_path=target_path,
+                background_path=background_path,
+                output_csv=output_dir / "PCR_Advanced_Report.csv",
+                extract_sequence=request.extract_sequence,
+                max_mismatch=request.max_mismatch,
+                workers=request.workers,
+                max_len=request.max_len,
+            )
         return _start_job(job_id, job_dir, output_dir, command, source="validate-local")
 
     if not request.email:
@@ -742,6 +767,7 @@ def _create_validation_job(request: ValidationRequest) -> dict[str, Any]:
             "max_mismatch": request.max_mismatch,
             "workers": request.workers,
             "max_len": request.max_len,
+            "action": request.action,
         },
     )
     command = _build_web_job_command("validate_online", request_path)
@@ -835,6 +861,7 @@ def _build_validate_primers_command(
 ) -> list[str]:
     command = [
         sys.executable,
+        "-u",
         "-m",
         "rational_design.cli",
         "validate_primers",
@@ -861,7 +888,7 @@ def _build_validate_primers_command(
 def _write_primers_csv(path: Path, primers: list[PrimerPair]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="", encoding="utf-8") as handle:
-        writer = csv.DictWriter(handle, fieldnames=["name", "fwd", "rev", "template"])
+        writer = csv.DictWriter(handle, fieldnames=["name", "fwd", "rev", "template", "probe"])
         writer.writeheader()
         for primer in primers:
             writer.writerow(
@@ -870,6 +897,7 @@ def _write_primers_csv(path: Path, primers: list[PrimerPair]) -> Path:
                     "fwd": primer.fwd.strip().upper(),
                     "rev": primer.rev.strip().upper(),
                     "template": (primer.template or "").strip(),
+                    "probe": (primer.probe or "").strip().upper(),
                 }
             )
     return path
@@ -885,6 +913,15 @@ def _validate_primers(primers: list[PrimerPair]) -> None:
             bad = sorted({base for base in clean if base not in allowed})
             if bad:
                 raise HTTPException(status_code=400, detail=f"{primer.name}.{field_name} contains unsupported bases: {''.join(bad)}")
+        
+        if primer.probe:
+            clean_probe = primer.probe.strip().upper()
+            if clean_probe:
+                if len(clean_probe) < 8:
+                    raise HTTPException(status_code=400, detail=f"{primer.name}.probe must be at least 8 bases.")
+                bad_probe = sorted({base for base in clean_probe if base not in allowed})
+                if bad_probe:
+                    raise HTTPException(status_code=400, detail=f"{primer.name}.probe contains unsupported bases: {''.join(bad_probe)}")
 
 
 def _write_web_job_request(job_dir: Path, payload: dict[str, Any]) -> Path:

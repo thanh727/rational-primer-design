@@ -1,0 +1,30 @@
+{
+  "streptococcus_parasuis": [
+    "\"Streptococcus parasuis\"[Organism] AND \"complete genome\"[title]",
+    1.7
+  ],
+  "streptococcus_pneumoniae": [
+    "\"Streptococcus pneumoniae\"[Organism] AND \"complete genome\"[title]",
+    1.8
+  ],
+  "streptococcus_agalactiae": [
+    "\"Streptococcus agalactiae\"[Organism] AND \"complete genome\"[title]",
+    1.8
+  ],
+  "streptococcus_pyogenes": [
+    "\"Streptococcus pyogenes\"[Organism] AND \"complete genome\"[title]",
+    1.7
+  ],
+  "streptococcus_uberis": [
+    "\"Streptococcus uberis\"[Organism] AND \"complete genome\"[title]",
+    1.8
+  ],
+  "streptococcus_dysgalactiae": [
+    "\"Streptococcus dysgalactiae\"[Organism] AND \"complete genome\"[title]",
+    1.8
+  ],
+  "enterococcus_faecalis": [
+    "\"Enterococcus faecalis\"[Organism] AND \"complete genome\"[title]",
+    2.5
+  ]
+}

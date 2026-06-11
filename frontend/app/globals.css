@@ -785,7 +785,7 @@ input[type="file"] {
 
 .primer-row {
   display: grid;
-  grid-template-columns: 170px minmax(180px, 1fr) minmax(180px, 1fr) auto;
+  grid-template-columns: 140px minmax(140px, 1fr) minmax(140px, 1fr) minmax(140px, 1fr) auto;
   gap: 8px;
 }
 

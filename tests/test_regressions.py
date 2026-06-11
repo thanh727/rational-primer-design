@@ -232,3 +232,126 @@ def test_prober_specificity_ignores_empty_background_products(tmp_path, monkeypa
 
     df = pd.read_csv(output_csv)
     assert df.loc[0, "Spec"] == "66.67%"
+
+
+def test_industrial_engine_with_probe(tmp_path):
+    from rational_design.insilico_pcr_advanced import IndustrialEngine
+    
+    genome_fasta = tmp_path / "genome.fasta"
+    write_fasta(genome_fasta, "strain1", "ACGTACGT" + "TTTGGGCCCTTT" + "ACGTACGT")
+    
+    # 1. No probe - conventional PCR should be Positive
+    engine_conv = IndustrialEngine(
+        name="set_1",
+        fwd="ACGTACGT",
+        rev="ACGTACGT",
+        extract_seq=True
+    )
+    res_conv = engine_conv.process_genome(("strain1", str(genome_fasta), True))
+    assert res_conv[3] == "Positive"
+    
+    # 2. Probe specified and matches -> Positive
+    engine_match = IndustrialEngine(
+        name="set_1",
+        fwd="ACGTACGT",
+        rev="ACGTACGT",
+        probe="GGGCC",
+        extract_seq=True
+    )
+    res_match = engine_match.process_genome(("strain1", str(genome_fasta), True))
+    assert res_match[3] == "Positive"
+    
+    # 3. Probe specified and does NOT match -> Absent
+    engine_no_match = IndustrialEngine(
+        name="set_1",
+        fwd="ACGTACGT",
+        rev="ACGTACGT",
+        probe="GGGGGGGGGG",
+        extract_seq=True
+    )
+    res_no_match = engine_no_match.process_genome(("strain1", str(genome_fasta), True))
+    assert res_no_match[3] == "Absent"
+
+    # 4. Degenerate probe matches GGGCC -> Positive
+    engine_degen = IndustrialEngine(
+        name="set_1",
+        fwd="ACGTACGT",
+        rev="ACGTACGT",
+        probe="GGRCC",
+        extract_seq=True
+    )
+    res_degen = engine_degen.process_genome(("strain1", str(genome_fasta), True))
+    assert res_degen[3] == "Positive"
+
+
+def test_design_probes_for_primers(tmp_path):
+    from rational_design.probe_designer import design_probes_for_primers
+    
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    
+    fwd = "GCTGATGCAAAATTACTCGG"
+    rev = "CCTGTTCATCCTCTGTAAAT"
+    probe_candidate = "TGAGTACCCACTTCGGTTTGGTT"
+    target_seq = fwd + "TTT" + "TGAGTACCCACTTCGGTTTGG" + "TTT" + "ATTTACAGAGGATGAACAGG"
+    
+    write_fasta(target_dir / "t1.fasta", "strain_t1", target_seq)
+    
+    bg_dir = tmp_path / "background"
+    bg_dir.mkdir()
+    bg_seq = fwd + "TTT" + "CCCCCCCCCCCCCCCCCCCC" + "TTT" + "ATTTACAGAGGATGAACAGG"
+    write_fasta(bg_dir / "bg1.fasta", "strain_b1", bg_seq)
+    
+    primers_csv = tmp_path / "primers.csv"
+    df_p = pd.DataFrame([{"name": "Set_1", "fwd": fwd, "rev": rev}])
+    df_p.to_csv(primers_csv, index=False)
+    
+    output_csv = tmp_path / "designed_probes.csv"
+    success = design_probes_for_primers(
+        primers_csv=str(primers_csv),
+        target_dir=str(target_dir),
+        bg_dir=str(bg_dir),
+        output_csv=str(output_csv),
+        max_error=2
+    )
+    
+    assert success
+    df_out = pd.read_csv(output_csv)
+    assert len(df_out) == 1
+    assert df_out.loc[0, "probe"] == probe_candidate
+    assert df_out.loc[0, "sensitivity"] == "100.0%"
+    assert df_out.loc[0, "specificity"] == "100.0%"
+
+
+def test_design_degenerate_probes_for_primers(tmp_path):
+    from rational_design.probe_designer import design_probes_for_primers
+    
+    target_dir = tmp_path / "target"
+    target_dir.mkdir()
+    
+    fwd = "GCTGATGCAAAATTACTCGG"
+    rev = "CCTGTTCATCCTCTGTAAAT"
+    
+    target_seq1 = fwd + "TTT" + "TGAGTACCCACTTCGGTTTGG" + "TTT" + "ATTTACAGAGGATGAACAGG"
+    target_seq2 = fwd + "TTT" + "TGAGTACCCACTTCGGAAAGG" + "TTT" + "ATTTACAGAGGATGAACAGG"
+    
+    write_fasta(target_dir / "t1.fasta", "strain_t1", target_seq1)
+    write_fasta(target_dir / "t2.fasta", "strain_t2", target_seq2)
+    
+    primers_csv = tmp_path / "primers.csv"
+    df_p = pd.DataFrame([{"name": "Set_1", "fwd": fwd, "rev": rev}])
+    df_p.to_csv(primers_csv, index=False)
+    
+    output_csv = tmp_path / "designed_probes.csv"
+    success = design_probes_for_primers(
+        primers_csv=str(primers_csv),
+        target_dir=str(target_dir),
+        output_csv=str(output_csv),
+        max_error=2
+    )
+    
+    assert success
+    df_out = pd.read_csv(output_csv)
+    assert len(df_out) == 1
+    probe_seq = df_out.loc[0, "probe"]
+    assert any(char in probe_seq for char in "RYSWKMBDHVN")

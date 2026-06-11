@@ -48,8 +48,29 @@ def run_validate_online(request: dict[str, Any]) -> None:
     print("[web-job] Fetching background genomes for primer validation...")
     fetcher.fetch_and_save_all(_query_config(request.get("backgrounds", []), "b"), str(background_dir))
 
-    _run_command(
-        _validate_command(
+    action = request.get("action", "validate")
+    if action == "design-probes":
+        command = [
+            sys.executable,
+            "-m",
+            "rational_design.cli",
+            "design_probes",
+            "-c",
+            str(request["primers_path"]),
+            "-t",
+            str(target_dir),
+            "-o",
+            str(output_dir / "designed_probes.csv"),
+            "-e",
+            str(request.get("max_mismatch", 4)),
+            "--max_len",
+            str(request.get("max_len", 1500)),
+        ]
+        # Check if there are background files downloaded
+        if any(background_dir.iterdir()):
+            command.extend(["-b", str(background_dir)])
+    else:
+        command = _validate_command(
             primers_path=Path(request["primers_path"]),
             target_dir=target_dir,
             background_dir=background_dir,
@@ -59,7 +80,8 @@ def run_validate_online(request: dict[str, Any]) -> None:
             workers=int(request.get("workers", 0)),
             max_len=int(request.get("max_len", 1500)),
         )
-    )
+
+    _run_command(command)
 
 
 def run_local_multiplex(request: dict[str, Any]) -> None:
