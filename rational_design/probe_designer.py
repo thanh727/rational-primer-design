@@ -7,7 +7,7 @@ from .insilico_pcr_advanced import IndustrialEngine, is_match
 from .prober import ProbeSelector, _gc_percent_degenerate, _has_homopolymer
 from .multiplex import check_dimer, check_hairpin
 
-def design_probes_for_primers(primers_csv, target_dir, bg_dir=None, output_csv="designed_probes.csv", max_error=4, max_len=1500):
+def design_probes_for_primers(primers_csv, target_dir, bg_dir=None, output_csv="designed_probes.csv", max_error=4, max_len=1500, probe_max_error=2):
     # 1. Load primer pairs
     df_primers = pd.read_csv(primers_csv)
     primers = df_primers.to_dict('records')
@@ -36,7 +36,7 @@ def design_probes_for_primers(primers_csv, target_dir, bg_dir=None, output_csv="
         rev = p['rev'].strip().upper()
         print(f"▶️ Designing probe for marker: {name}...")
         
-        engine = IndustrialEngine(name, fwd, rev, max_error=max_error, max_p=max_len, extract_seq=True)
+        engine = IndustrialEngine(name, fwd, rev, max_error=max_error, max_p=max_len, extract_seq=True, probe_max_error=probe_max_error)
         
         target_amps = []
         bg_amps = []

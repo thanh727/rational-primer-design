@@ -1225,6 +1225,7 @@ def main():
     cmd_val.add_argument("-o", "--output", default="PCR_Advanced_Report.csv")
     cmd_val.add_argument("-s", "--seq", action="store_true", help="Trích xuất trình tự Amplicon")
     cmd_val.add_argument("-e", "--error", type=int, default=4, help="Mismatch tối đa")
+    cmd_val.add_argument("--probe_error", type=int, default=2, help="Mismatch tối đa cho phép của probe")
     cmd_val.add_argument("-w", "--workers", type=int, default=8, help="Số nhân CPU")
     cmd_val.add_argument("--max_len", type=int, default=1500, help="Độ dài Amplicon tối đa")
 
@@ -1235,6 +1236,7 @@ def main():
     cmd_probe.add_argument("-b", "--background", help="Thư mục Background Genomes (tùy chọn)")
     cmd_probe.add_argument("-o", "--output", default="designed_probes.csv", help="Tệp CSV đầu ra")
     cmd_probe.add_argument("-e", "--error", type=int, default=4, help="Mismatch tối đa")
+    cmd_probe.add_argument("--probe_error", type=int, default=2, help="Mismatch tối đa cho phép của probe")
     cmd_probe.add_argument("--max_len", type=int, default=1500, help="Độ dài Amplicon tối đa")
 
     # Register multiplex_analyze command
@@ -1266,7 +1268,8 @@ def main():
             bg_dir=args.background,
             output_csv=args.output,
             max_error=args.error,
-            max_len=args.max_len
+            max_len=args.max_len,
+            probe_max_error=args.probe_error
         )
     elif args.command == "multiplex_analyze":
         run_multiplex_analysis(args)

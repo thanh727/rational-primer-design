@@ -8,6 +8,7 @@ from concurrent.futures import ProcessPoolExecutor
 from Bio import SeqIO
 from Bio.Seq import Seq
 import time
+from .validator import find_primer_hits
 
 # --- SYSTEM OPTIMIZATION FOR MACOS ---
 try:
@@ -33,20 +34,8 @@ def is_match(q, t):
     """Check primer match with IUPAC characters."""
     return t in IUPAC.get(q, {q})
 
-def _expand_degenerate_seed(seed_seq):
-    seed_seq = str(seed_seq).upper()
-    results = [""]
-    for char in seed_seq:
-        bases = IUPAC.get(char, {char})
-        next_results = []
-        for r in results:
-            for b in bases:
-                next_results.append(r + b)
-        results = next_results
-    return [s.encode() for s in results]
-
 class IndustrialEngine:
-    def __init__(self, name, fwd, rev, template_path='', max_error=4, max_p=1500, extract_seq=False, probe=''):
+    def __init__(self, name, fwd, rev, template_path='', max_error=4, max_p=1500, extract_seq=False, probe='', probe_max_error=2):
         self.name = name
         self.fwd, self.rev = fwd.strip().upper(), rev.strip().upper()
         self.probe = probe.strip().upper() if probe else ''
@@ -54,19 +43,12 @@ class IndustrialEngine:
         self.r_rc = str(Seq(self.rev).reverse_complement()).upper()
         self.max_error, self.max_p, self.extract_seq = max_error, max_p, extract_seq
         self.template_path = template_path
-        
-        # 8bp seeds at 3' end, expanded if they contain degenerate IUPAC bases
-        self.seeds = {
-            "f": _expand_degenerate_seed(self.fwd[-8:]), 
-            "f_rc": _expand_degenerate_seed(self.f_rc[:8]),
-            "r": _expand_degenerate_seed(self.rev[-8:]), 
-            "r_rc": _expand_degenerate_seed(self.r_rc[:8])
-        }
+        self.probe_max_error = probe_max_error
 
     def check_probe_match(self, amplicon_seq):
         """Check if the probe matches inside the amplicon sequence.
         Supports IUPAC degenerate bases.
-        Allows up to 2 mismatches by default.
+        Allows up to probe_max_error mismatches.
         """
         if not self.probe:
             return True
@@ -82,21 +64,9 @@ class IndustrialEngine:
             sub = amplicon_seq[i : i + probe_len]
             err_fwd = sum(1 for j in range(probe_len) if not is_match(self.probe[j], sub[j]))
             err_rev = sum(1 for j in range(probe_len) if not is_match(probe_rc[j], sub[j]))
-            if err_fwd <= 2 or err_rev <= 2:
+            if err_fwd <= self.probe_max_error or err_rev <= self.probe_max_error:
                 return True
         return False
-
-    def get_mm(self, seq_b, primer_str, seed_pos):
-        """Calculate detailed mismatch for a binding site."""
-        p_len = len(primer_str)
-        start = max(0, seed_pos - (p_len - 8) - 2)
-        target = seq_b[start : seed_pos + 10].decode()
-        best_err = p_len
-        for shift in range(min(5, len(target) - p_len + 1)):
-            sub = target[shift : shift + p_len]
-            err = sum(1 for j in range(p_len) if not is_match(primer_str[j], sub[j]))
-            if err < best_err: best_err = err
-        return best_err
 
     def process_genome(self, args):
         """Process PCR on a specific genome."""
@@ -105,73 +75,68 @@ class IndustrialEngine:
         all_hits = []
         
         try:
-            # 1. Fast scan using Binary Read to find Seed
-            with open(path, 'rb') as f:
-                raw_content = f.read().upper()
+            # 1. Read contigs/sequences
+            sequences = []
+            for r in SeqIO.parse(path, "fasta"):
+                sequences.append(str(r.seq).upper())
 
-            has_f = any(s in raw_content for s in self.seeds["f"]) or any(s in raw_content for s in self.seeds["f_rc"])
-            has_r = any(s in raw_content for s in self.seeds["r"]) or any(s in raw_content for s in self.seeds["r_rc"])
+            # 2. Match primers and find amplicons exactly like in validator.py
+            # validator.py:
+            # f_hits = find_primer_hits(seq_s, f_s, mm)
+            # r_hits = find_primer_hits(seq_s, r_rc_s, mm)
+            # where f_s = fwd, r_rc_s = rev_rc (which is reverse complement of recs[i+1].seq).
+            # Note: in validator.py, the input rev is the reverse complement of raw reverse primer,
+            # so validator's f_s = fwd, r_rc_s = rev.
+            
+            # Since CLI primers.csv contains raw fwd and rev:
+            # f_s = fwd
+            # r_rc_s = rev_rc (which is Seq(rev).reverse_complement())
+            # r_s = rev
+            # f_rc_s = fwd_rc (which is Seq(fwd).reverse_complement())
+            f_s, r_rc_s = self.fwd, self.r_rc
+            r_s, f_rc_s = self.rev, self.f_rc
 
-            if not (has_f and has_r) and not is_target:
-                return [sid, group_label, self.name, "Absent", "N/A", 0, "N/A", 0, "N/A", "N/A"]
+            for seq_s in sequences:
+                f_hits = find_primer_hits(seq_s, f_s, self.max_error)
+                r_hits = find_primer_hits(seq_s, r_rc_s, self.max_error)
 
-            # 2. Detailed analysis of each Contig
-            for rec in SeqIO.parse(path, "fasta"):
-                # Iterate both original strand (+) and complementary strand (-)
-                for strand_type, seq_obj in [("+", rec.seq), ("-", rec.seq.reverse_complement())]:
-                    seq_b = str(seq_obj).upper().encode()
-                    
-                    # Check forward primer pair (F -> R_rc)
-                    has_f_seed = any(s in seq_b for s in self.seeds["f"])
-                    has_r_rc_seed = any(s in seq_b for s in self.seeds["r_rc"])
-                    if has_f_seed and has_r_rc_seed:
-                        f_pos = []
-                        for s in self.seeds["f"]:
-                            f_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
-                        r_pos = []
-                        for s in self.seeds["r_rc"]:
-                            r_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
-                        for fi in f_pos:
-                            for ri in r_pos:
-                                start_pos = fi - (len(self.fwd) - 8)
-                                end_pos = ri + len(self.rev)
-                                if 0 < (end_pos - start_pos) < self.max_p:
-                                    fwd_bind = seq_b[start_pos : fi + 8].decode()
-                                    rev_bind = seq_b[ri : end_pos].decode()
-                                    mm = sum(1 for j in range(len(self.fwd)) if not is_match(self.fwd[j], fwd_bind[j])) + \
-                                         sum(1 for j in range(len(self.rev)) if not is_match(self.r_rc[j], rev_bind[j]))
-                                    if mm <= self.max_error:
-                                        amp_seq = seq_b[start_pos:end_pos].decode()
-                                        if self.check_probe_match(amp_seq):
-                                            size = end_pos - start_pos
-                                            seq = amp_seq if self.extract_seq else "N/A"
-                                            all_hits.append([mm, size, "Standard", seq])
+                r_len = len(r_hits)
+                r_idx = 0
+                for f in f_hits:
+                    while r_idx < r_len and r_hits[r_idx]["pos"] <= f["pos"]:
+                        r_idx += 1
+                    for j in range(r_idx, r_len):
+                        r = r_hits[j]
+                        p_len = r["pos"] - f["pos"] + len(r_rc_s)
+                        if p_len > self.max_p:
+                            break
+                        if 15 <= p_len: # default product min
+                            mm = f["mm"] + r["mm"]
+                            # validator.py does not filter by f["mm"] + r["mm"] <= max_mismatch, 
+                            # because each hit is already <= max_mismatch.
+                            # So we just collect it.
+                            amp_seq = seq_s[f["pos"]:r["pos"] + len(r_rc_s)]
+                            if self.check_probe_match(amp_seq):
+                                all_hits.append([mm, p_len, "Standard", amp_seq if self.extract_seq else "N/A"])
 
-                    # Check reverse primer pair (R -> F_rc)
-                    has_r_seed = any(s in seq_b for s in self.seeds["r"])
-                    has_f_rc_seed = any(s in seq_b for s in self.seeds["f_rc"])
-                    if has_r_seed and has_f_rc_seed:
-                        r_pos = []
-                        for s in self.seeds["r"]:
-                            r_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
-                        f_pos = []
-                        for s in self.seeds["f_rc"]:
-                            f_pos.extend([i for i in range(len(seq_b)) if seq_b.startswith(s, i)])
-                        for ri in r_pos:
-                            for fi in f_pos:
-                                start_pos = ri - (len(self.rev) - 8)
-                                end_pos = fi + len(self.fwd)
-                                if 0 < (end_pos - start_pos) < self.max_p:
-                                    rev_bind = seq_b[start_pos : ri + 8].decode()
-                                    fwd_bind = seq_b[fi : end_pos].decode()
-                                    mm = sum(1 for j in range(len(self.rev)) if not is_match(self.rev[j], rev_bind[j])) + \
-                                         sum(1 for j in range(len(self.fwd)) if not is_match(self.f_rc[j], fwd_bind[j]))
-                                    if mm <= self.max_error:
-                                        amp_seq = seq_b[start_pos:end_pos].decode()
-                                        if self.check_probe_match(amp_seq):
-                                            size = end_pos - start_pos
-                                            seq = amp_seq if self.extract_seq else "N/A"
-                                            all_hits.append([mm, size, "Reverse-Pair", seq])
+                r_hits_alt = find_primer_hits(seq_s, r_s, self.max_error)
+                f_hits_alt = find_primer_hits(seq_s, f_rc_s, self.max_error)
+
+                f_len = len(f_hits_alt)
+                f_idx = 0
+                for r in r_hits_alt:
+                    while f_idx < f_len and f_hits_alt[f_idx]["pos"] <= r["pos"]:
+                        f_idx += 1
+                    for j in range(f_idx, f_len):
+                        f = f_hits_alt[j]
+                        p_len = f["pos"] - r["pos"] + len(f_rc_s)
+                        if p_len > self.max_p:
+                            break
+                        if 15 <= p_len:
+                            mm = r["mm"] + f["mm"]
+                            amp_seq = seq_s[r["pos"]:f["pos"] + len(f_rc_s)]
+                            if self.check_probe_match(amp_seq):
+                                all_hits.append([mm, p_len, "Reverse-Pair", amp_seq if self.extract_seq else "N/A"])
 
             if all_hits:
                 b = sorted(all_hits, key=lambda x: x[0])[0]
@@ -195,6 +160,7 @@ def main():
     parser.add_argument("-o", "--output", default="PCR_Advanced_Report.csv")
     parser.add_argument("-s", "--seq", action="store_true", help="Extract Amplicon sequence")
     parser.add_argument("-e", "--error", type=int, default=4, help="Total maximum mismatch")
+    parser.add_argument("--probe_error", type=int, default=2, help="Maximum mismatches allowed for probe")
     parser.add_argument("-w", "--workers", type=int, default=8, help="Number of CPU cores")
     parser.add_argument("--max_len", type=int, default=1500, help="Maximum Amplicon size")
     args = parser.parse_args()
@@ -229,7 +195,8 @@ def main():
                 args.error, 
                 args.max_len, 
                 args.seq,
-                probe=p.get('probe', '')
+                probe=p.get('probe', ''),
+                probe_max_error=args.probe_error
             )
             
             workers = args.workers if args.workers > 0 else max(1, multiprocessing.cpu_count() - 2)
