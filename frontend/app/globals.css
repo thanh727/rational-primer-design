@@ -82,6 +82,7 @@ a {
 .site-body {
   display: grid;
   grid-template-columns: clamp(260px, 28vw, 380px) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
   flex: 1;
   min-height: 0;
   overflow: hidden;
@@ -89,6 +90,7 @@ a {
 
 .site-body--full {
   grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr);
 }
 
 .config-sidebar {
@@ -375,6 +377,10 @@ a {
   grid-template-columns: minmax(0, 1.06fr) minmax(0, 0.94fr);
   gap: 16px;
   align-items: start;
+}
+
+.main-grid.single {
+  grid-template-columns: 1fr;
 }
 
 .stack {
@@ -765,10 +771,13 @@ input[type="file"] {
 }
 
 .query-editor {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 10px;
   overflow-x: auto;
   padding-bottom: 4px;
+  width: 100%;
+  min-width: 0;
 }
 
 .subheading {
@@ -780,17 +789,19 @@ input[type="file"] {
 }
 
 .query-row {
-  display: grid;
-  grid-template-columns: minmax(140px, 1fr) minmax(70px, 100px) minmax(60px, 80px) minmax(70px, 90px) auto;
-  gap: 6px;
-  min-width: 500px;
+  display: grid !important;
+  grid-template-columns: minmax(140px, 1fr) minmax(70px, 100px) minmax(60px, 80px) minmax(70px, 90px) auto !important;
+  gap: 6px !important;
+  min-width: 500px !important;
+  flex-shrink: 0 !important;
 }
 
 .primer-row {
-  display: grid;
-  grid-template-columns: minmax(100px, 140px) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) auto;
-  gap: 6px;
-  min-width: 600px;
+  display: grid !important;
+  grid-template-columns: minmax(100px, 140px) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) auto !important;
+  gap: 6px !important;
+  min-width: 600px !important;
+  flex-shrink: 0 !important;
 }
 
 .path-row {
@@ -1442,6 +1453,7 @@ th {
 @media (max-width: 1200px) {
   .site-body {
     grid-template-columns: clamp(220px, 32vw, 330px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr);
   }
   .main-grid,
   .ai-main-grid {
@@ -1454,7 +1466,11 @@ th {
 
 @media (max-width: 1024px) {
   .site-body {
-    grid-template-columns: 1fr;
+    display: flex;
+    flex-direction: column;
+    overflow-y: auto;
+    grid-template-columns: none;
+    grid-template-rows: none;
   }
   .site-header {
     align-items: stretch;
@@ -1466,6 +1482,14 @@ th {
     position: static;
     border-right: 0;
     border-bottom: 1px solid var(--line);
+    flex-shrink: 0;
+    min-height: auto;
+    overflow-y: visible;
+  }
+  .workspace {
+    flex-shrink: 0;
+    min-height: auto;
+    overflow-y: visible;
   }
   .top-nav {
     flex-wrap: wrap;
