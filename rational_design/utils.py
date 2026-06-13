@@ -87,6 +87,7 @@ class DualLogger(object):
                 self.terminal.write(safe)
             except UnicodeEncodeError:
                 self.terminal.write(safe.encode(self.terminal.encoding, errors='replace').decode(self.terminal.encoding))
+        self.terminal.flush()
         self.log.write(message)
         self.log.flush()
     def flush(self):

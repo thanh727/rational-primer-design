@@ -5,9 +5,9 @@
   "description": "Rational Primer Design — Desktop application",
   "main": "electron/main.js",
   "scripts": {
-    "dev": "concurrently -k \"npm run dev:frontend\" \"sleep 3 && npm run dev:electron\"",
+    "dev": "concurrently -k \"npm run dev:frontend\" \"node scripts/delay.js 3000 && npm run dev:electron\"",
     "dev:frontend": "cd frontend && npx next dev -p 3001",
-    "dev:electron": "NODE_ENV=development electron . --dev",
+    "dev:electron": "cross-env NODE_ENV=development electron . --dev",
     "build:frontend": "cd frontend && npx next build",
     "build:backend": "pyinstaller --clean backend.spec",
     "build": "npm run build:frontend && npm run build:backend",
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "concurrently": "^9.1.0",
+    "cross-env": "^7.0.3",
     "electron": "^34.3.0",
     "electron-builder": "^25.1.0"
   },
@@ -43,7 +44,10 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64", "x64"]
+          "arch": [
+            "arm64",
+            "x64"
+          ]
         }
       ],
       "icon": "logo.png",
@@ -54,13 +58,18 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "logo.png"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "category": "Science",
       "icon": "logo.png"
     },

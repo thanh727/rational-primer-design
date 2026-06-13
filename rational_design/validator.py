@@ -211,7 +211,7 @@ class InSilicoValidator:
             all_sids = list(strain_data.keys())
         else:
             for f in sorted(os.listdir(input_path)):
-                if f.lower().endswith((".fasta", ".fa", ".fna", ".fas")):
+                if f.lower().endswith((".fasta", ".fa", ".fna", ".fas")) and not f.startswith("."):
                     sid = f
                     strain_sources[sid] = os.path.join(input_path, f)
             all_sids = list(strain_sources.keys())

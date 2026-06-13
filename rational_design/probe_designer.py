@@ -16,12 +16,12 @@ def design_probes_for_primers(primers_csv, target_dir, bg_dir=None, output_csv="
     tasks = []
     if target_dir and os.path.exists(target_dir):
         for f in os.listdir(target_dir):
-            if f.lower().endswith((".fasta", ".fna", ".fa")):
+            if f.lower().endswith((".fasta", ".fna", ".fa")) and not f.startswith("."):
                 tasks.append((f, os.path.join(target_dir, f), True))
                 
     if bg_dir and os.path.exists(bg_dir):
         for f in os.listdir(bg_dir):
-            if f.lower().endswith((".fasta", ".fna", ".fa")):
+            if f.lower().endswith((".fasta", ".fna", ".fa")) and not f.startswith("."):
                 tasks.append((f, os.path.join(bg_dir, f), False))
                 
     print(f"🧬 Loaded {len(primers)} primer pairs.")

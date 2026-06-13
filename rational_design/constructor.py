@@ -20,7 +20,9 @@ class LibraryConstructor:
             return [path]
         files = []
         for e in exts:
-            files.extend(list(path.glob(e)))
+            for f in path.glob(e):
+                if not f.name.startswith("."):
+                    files.append(f)
         return sorted(set(files))
 
     def _parse_records(self, file_path):

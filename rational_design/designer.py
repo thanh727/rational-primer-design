@@ -334,7 +334,7 @@ class PrimerDesigner:
             files = sorted(
                 os.path.join(input_path, f)
                 for f in os.listdir(input_path)
-                if f.lower().endswith(fasta_exts)
+                if f.lower().endswith(fasta_exts) and not f.startswith(".")
             )
 
             print(

@@ -9,6 +9,7 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 import time
 from .validator import find_primer_hits
+from .utils import ensure_utf8_console
 
 # --- SYSTEM OPTIMIZATION FOR MACOS ---
 try:
@@ -153,6 +154,7 @@ class IndustrialEngine:
 
 # ================= ORCHESTRATOR (MAIN) =================
 def main():
+    ensure_utf8_console()
     parser = argparse.ArgumentParser(description="TMRC Industrial PCR Engine v4.5")
     parser.add_argument("-c", "--config", required=True, help="primers.csv file")
     parser.add_argument("-t", "--target", help="Target Genomes directory")
@@ -177,7 +179,7 @@ def main():
     for folder, is_target in [(args.target, True), (args.background, False)]:
         if folder and os.path.exists(folder):
             tasks.extend([(f, os.path.join(folder, f), is_target) 
-                          for f in os.listdir(folder) if f.lower().endswith((".fasta", ".fna", ".fa"))])
+                          for f in os.listdir(folder) if f.lower().endswith((".fasta", ".fna", ".fa")) and not f.startswith(".")])
 
     print(f"📊 Total genomes to analyze: {len(tasks)}")
     print(f"🧬 Total Markers: {len(primers)}")

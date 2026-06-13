@@ -1,4 +1,4 @@
-const { spawn } = require("child_process");
+const { spawn, spawnSync } = require("child_process");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
@@ -18,15 +18,14 @@ function resolveBinary() {
   const prodBinary = path.join(resources, "backend", `api_server${ext}`);
 
   if (process.env.NODE_ENV === "development" || !fs.existsSync(prodBinary)) {
-    const venvPython = path.join(__dirname, "..", "venv", "bin", "python");
+    const isWin = process.platform === "win32";
+    const venvPython = isWin
+      ? path.join(__dirname, "..", "venv", "Scripts", "python.exe")
+      : path.join(__dirname, "..", "venv", "bin", "python");
     if (fs.existsSync(venvPython)) {
       return { command: venvPython, args: ["-m", "rational_design.api_server"] };
     }
-    const venvPythonWin = path.join(__dirname, "..", "venv", "Scripts", "python.exe");
-    if (fs.existsSync(venvPythonWin)) {
-      return { command: venvPythonWin, args: ["-m", "rational_design.api_server"] };
-    }
-    return { command: "python3", args: ["-m", "rational_design.api_server"] };
+    return { command: isWin ? "python" : "python3", args: ["-m", "rational_design.api_server"] };
   }
   return { command: prodBinary, args: [] };
 }
@@ -106,7 +105,7 @@ function stopBackend() {
   if (!backendProcess) return;
   try {
     if (process.platform === "win32") {
-      spawn("taskkill", ["/pid", String(backendProcess.pid), "/f", "/t"]);
+      spawnSync("taskkill", ["/pid", String(backendProcess.pid), "/f", "/t"]);
     } else {
       process.kill(-backendProcess.pid, "SIGTERM");
     }

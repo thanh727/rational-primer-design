@@ -1136,6 +1136,8 @@ def _strip_proposal(text: str) -> str:
 
 def _start_job(job_id: str, job_dir: Path, output_dir: Path, command: list[str], source: str) -> dict[str, Any]:
     process_log = open(job_dir / "process.log", "a", encoding="utf-8")
+    env = os.environ.copy()
+    env["PYTHONUNBUFFERED"] = "1"
     try:
         proc = subprocess.Popen(
             command,
@@ -1144,6 +1146,7 @@ def _start_job(job_id: str, job_dir: Path, output_dir: Path, command: list[str],
             stderr=subprocess.STDOUT,
             text=True,
             start_new_session=os.name != "nt",
+            env=env,
         )
     except Exception:
         process_log.close()

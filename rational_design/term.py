@@ -1523,6 +1523,7 @@ def _run_subprocess(cmd: list[str], title: str) -> None:
 
     my_env = os.environ.copy()
     my_env["PYTHONIOENCODING"] = "utf-8"
+    my_env["PYTHONUNBUFFERED"] = "1"
 
     with Progress(
         SpinnerColumn(),
