@@ -273,7 +273,8 @@ def save_validation_report(pcr_report_csv: str, primers: list) -> None:
             df_p_bg = df_p[df_p[group_col].str.strip().str.lower() == "background"]
 
             total_target = len(df_p_target)
-            hits_target = len(df_p_target[df_p_target[status_col].str.strip().str.lower().isin(["positive"])])
+            df_p_target_pos = df_p_target[df_p_target[status_col].str.strip().str.lower().isin(["positive"])]
+            hits_target = len(df_p_target_pos)
             total_bg = len(df_p_bg)
             hits_bg = len(df_p_bg[df_p_bg[status_col].str.strip().str.lower().isin(["positive"])])
 
@@ -282,6 +283,31 @@ def save_validation_report(pcr_report_csv: str, primers: list) -> None:
 
             # Extract primer sequences from config if available
             primer_info = next((p for p in primers if str(p.get("name", "")) == str(primer_name)), {})
+
+            # Max copy number in target hits
+            copy_col = next((c for c in df.columns if "copy_number" in c.lower() or "copy" in c.lower()), None)
+            max_copy = 0
+            if copy_col and not df_p_target_pos.empty:
+                try:
+                    max_copy = int(pd.to_numeric(df_p_target_pos[copy_col], errors='coerce').max())
+                except Exception:
+                    pass
+
+            # Amplicon size range in target hits
+            size_col = next((c for c in df.columns if "amplicon_size" in c.lower() or "size" in c.lower()), None)
+            size_range = "N/A"
+            if size_col and not df_p_target_pos.empty:
+                try:
+                    sizes = pd.to_numeric(df_p_target_pos[size_col], errors='coerce').dropna().astype(int).tolist()
+                    if sizes:
+                        min_size = min(sizes)
+                        max_size = max(sizes)
+                        if min_size == max_size:
+                            size_range = f"{min_size}bp"
+                        else:
+                            size_range = f"{min_size}-{max_size}bp"
+                except Exception:
+                    pass
 
             per_primer_stats.append({
                 "primer_name": str(primer_name),
@@ -293,7 +319,9 @@ def save_validation_report(pcr_report_csv: str, primers: list) -> None:
                 "total_background_strains": total_bg,
                 "background_hits": hits_bg,
                 "specificity_pct": specificity,
-                "verdict": "PASS" if sensitivity >= 90.0 and specificity >= 95.0 else "MARGINAL" if sensitivity >= 70.0 else "FAIL"
+                "verdict": "PASS" if sensitivity >= 90.0 and specificity >= 95.0 else "MARGINAL" if sensitivity >= 70.0 else "FAIL",
+                "max_copy": max_copy,
+                "size_range": size_range
             })
 
     with open(report_dir / "per_primer_summary.json", "w", encoding="utf-8") as f:
@@ -301,11 +329,11 @@ def save_validation_report(pcr_report_csv: str, primers: list) -> None:
 
     # Print summary table
     if per_primer_stats:
-        print(f"\n   {'Primer':<20} {'Sens%':>8} {'Spec%':>8} {'Verdict':>10}")
-        print(f"   {'─'*20} {'─'*8} {'─'*8} {'─'*10}")
+        print(f"\n   {'Primer':<20} {'Sens%':>8} {'Spec%':>8} {'Max Copy':>9} {'Size Range':>12} {'Verdict':>10}")
+        print(f"   {'─'*20} {'─'*8} {'─'*8} {'─'*9} {'─'*12} {'─'*10}")
         for ps in per_primer_stats:
             v_icon = "✅" if ps["verdict"] == "PASS" else "⚠️" if ps["verdict"] == "MARGINAL" else "❌"
-            print(f"   {ps['primer_name']:<20} {ps['sensitivity_pct']:>7.1f}% {ps['specificity_pct']:>7.1f}% {v_icon} {ps['verdict']:>7}")
+            print(f"   {ps['primer_name']:<20} {ps['sensitivity_pct']:>7.1f}% {ps['specificity_pct']:>7.1f}% {ps['max_copy']:>9} {ps['size_range']:>12} {v_icon} {ps['verdict']:>7}")
 
     # --- CROSS-CONTAMINATION TRACEBACK ---
     xc_report = _traceback_validation_cross_contamination(df_bg, group_col, marker_col, status_col)
