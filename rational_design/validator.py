@@ -196,19 +196,22 @@ class InSilicoValidator:
             self._revalidate_degenerate_background(bg_path, out_dir, cpu, max_mm)
 
     def _process_strictly(self, input_path, pairs, out_csv, cpu, label):
+        strain_sources = {}
+        is_file_mode = os.path.isfile(input_path)
         strain_data = defaultdict(list)
-        if os.path.isfile(input_path):
+
+        if is_file_mode:
             for r in SeqIO.parse(input_path, "fasta"):
                 sid = r.id.split("|")[0] if "|" in r.id else r.id
                 strain_data[sid].append(str(r.seq).upper())
+            all_sids = list(strain_data.keys())
         else:
             for f in sorted(os.listdir(input_path)):
                 if f.lower().endswith((".fasta", ".fa", ".fna", ".fas")):
                     sid = f
-                    for r in SeqIO.parse(os.path.join(input_path, f), "fasta"):
-                        strain_data[sid].append(str(r.seq).upper())
+                    strain_sources[sid] = os.path.join(input_path, f)
+            all_sids = list(strain_sources.keys())
 
-        all_sids = list(strain_data.keys())
         print(f"      > Detected {len(all_sids)} independent strains in {label}.")
 
         with open(out_csv, "w", newline="") as f:
@@ -220,20 +223,25 @@ class InSilicoValidator:
         if not pairs or not all_sids:
             return
 
-        avail_gb = psutil.virtual_memory().available / (1024 ** 3)
-        if avail_gb > 16:
-            batch_size = 100
-        elif avail_gb > 8:
-            batch_size = 50
-        elif avail_gb > 4:
-            batch_size = 20
-        else:
-            batch_size = 5
-        print(f"      > Free RAM: {avail_gb:.1f}GB. Auto-assigned BATCH_SIZE = {batch_size}")
+        # Process in small batches of 10 to keep RAM usage extremely low and stable
+        batch_size = 10
+        print(f"      > Processing in batches of size {batch_size} to protect memory (OOM Prevention).")
 
         for i in range(0, len(all_sids), batch_size):
             batch_sids = all_sids[i:i + batch_size]
-            batch_tasks = [(sid, strain_data[sid]) for sid in batch_sids]
+            batch_tasks = []
+            for sid in batch_sids:
+                if is_file_mode:
+                    batch_tasks.append((sid, strain_data[sid]))
+                else:
+                    seqs = []
+                    try:
+                        for r in SeqIO.parse(strain_sources[sid], "fasta"):
+                            seqs.append(str(r.seq).upper())
+                    except Exception as e:
+                        print(f"      ⚠️ Error reading {strain_sources[sid]}: {e}")
+                    batch_tasks.append((sid, seqs))
+
             ctx = multiprocessing.get_context("spawn")
             with ctx.Pool(cpu, initializer=init_worker, initargs=(pairs,), maxtasksperchild=1) as pool:
                 try:
@@ -248,6 +256,7 @@ class InSilicoValidator:
                     writer.writerows(res_list)
             del batch_tasks
             nuclear_ram_flush()
+
 
     def _prepare_pairs(self, p_fa, mm):
         recs = list(SeqIO.parse(p_fa, "fasta"))
