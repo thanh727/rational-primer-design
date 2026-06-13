@@ -2,6 +2,7 @@ import csv
 import multiprocessing
 import os
 import sys
+import re
 from collections import defaultdict
 
 import Levenshtein
@@ -11,6 +12,18 @@ from Bio import SeqIO
 from Bio.Seq import Seq
 
 from .utils import nuclear_ram_flush
+
+IUPAC_REGEX = {
+    "A": "A", "C": "C", "G": "G", "T": "T",
+    "R": "[AG]", "Y": "[CT]", "S": "[GC]",
+    "W": "[AT]", "K": "[GT]", "M": "[AC]",
+    "B": "[CGT]", "D": "[AGT]", "H": "[ACT]",
+    "V": "[ACG]", "N": "[ACGT]",
+}
+
+def _iupac_to_regex(iupac_seq):
+    return "".join(IUPAC_REGEX.get(c, c) for c in iupac_seq.upper())
+
 
 DEFAULT_PRODUCT_MIN, DEFAULT_PRODUCT_MAX = 70, 450
 
@@ -61,33 +74,24 @@ def find_primer_hits(sequence_s, primer_s, max_mm):
     if n == 0 or len(sequence_s) < n:
         return hits
 
-    degenerate = _is_degenerate(primer_s)
     candidate_starts = set()
 
-    if degenerate:
-        candidate_starts.update(range(0, len(sequence_s) - n + 1))
-    else:
-        for offset, segment in _primer_segments(primer_s, max_mm):
-            start = 0
-            while True:
-                pos = sequence_s.find(segment, start)
-                if pos == -1:
-                    break
-                start_pos = pos - offset
-                if 0 <= start_pos <= len(sequence_s) - n:
-                    candidate_starts.add(start_pos)
-                start = pos + 1
+    # Pigeonhole segments: at least one segment must match exactly (accounting for IUPAC)
+    for offset, segment in _primer_segments(primer_s, max_mm):
+        pattern = _iupac_to_regex(segment)
+        for match in re.finditer(pattern, sequence_s):
+            start_pos = match.start() - offset
+            if 0 <= start_pos <= len(sequence_s) - n:
+                candidate_starts.add(start_pos)
 
     for start_pos in sorted(candidate_starts):
         target_sub = sequence_s[start_pos:start_pos + n]
-        if degenerate:
-            mm_count = _iupac_mismatch_count(primer_s, target_sub)
-        else:
-            mm_count = Levenshtein.hamming(primer_s, target_sub)
+        mm_count = _iupac_mismatch_count(primer_s, target_sub)
         if mm_count <= max_mm:
             mapping = "".join([t if p != t else "-" for p, t in zip(primer_s, target_sub)])
             hits.append({"pos": start_pos, "map": mapping, "mm": mm_count, "seq": target_sub})
     return hits
+
 
 
 ALL_PRIMERS_CACHED = []
