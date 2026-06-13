@@ -587,7 +587,7 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
   const [validationBackground, setValidationBackground] = useState("test_data/background");
   const [validationTargets, setValidationTargets] = useState<QueryItem[]>([{ query: "", size: 0, count: 50, type: "genome" }]);
   const [validationBackgrounds, setValidationBackgrounds] = useState<QueryItem[]>([{ query: "", size: 0, count: 10, type: "genome" }]);
-  const [maxMismatch, setMaxMismatch] = useState(4);
+  const [maxMismatch, setMaxMismatch] = useState(2);
   const [maxLen, setMaxLen] = useState(1500);
   const [extractSeq, setExtractSeq] = useState(false);
 
@@ -1105,7 +1105,7 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
         targets: proposalList(proposal, "target", "targets"),
         backgrounds: proposalList(proposal, "background", "backgrounds"),
         output_name: outputName,
-        max_mismatch: Number(proposal.max_mismatch ?? 4),
+        max_mismatch: Number(proposal.max_mismatch ?? 2),
         max_len: Number(proposal.max_len ?? 1500),
       });
     } else if (action === "propose_multiplex") {

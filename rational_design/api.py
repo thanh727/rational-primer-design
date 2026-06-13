@@ -80,7 +80,7 @@ class ValidationRequest(BaseModel):
     backgrounds: list[QueryItem] = Field(default_factory=list)
     output_name: str | None = None
     extract_sequence: bool = False
-    max_mismatch: int = Field(default=4, ge=0, le=12)
+    max_mismatch: int = Field(default=2, ge=0, le=12)
     workers: int = Field(default=0, ge=0, le=256)
     max_len: int = Field(default=1500, ge=50, le=10000)
     action: str = "validate"
@@ -1040,7 +1040,7 @@ def _start_job_from_ai_proposal(proposal: dict[str, Any], request: ChatRequest) 
             targets=targets,
             backgrounds=backgrounds,
             output_name=request.output_name or (targets[0].query if targets else "ai-validation"),
-            max_mismatch=int(proposal.get("max_mismatch", 4) or 4),
+            max_mismatch=int(proposal.get("max_mismatch", 2) or 2),
             max_len=int(proposal.get("max_len", 1500) or 1500),
         )
         return _create_validation_job(validation_request)

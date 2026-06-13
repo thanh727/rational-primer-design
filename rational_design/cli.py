@@ -186,7 +186,7 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
         "primer_length_min": 18, "primer_length_max": 22,
         "primer_tm_min": 55.0, "primer_tm_max": 68.0,
         "product_size_min": 100, "product_size_max": 350,
-        "design_min_conservation": 0.75, "min_sensitivity": 95.0, "max_mismatch": 3,
+        "design_min_conservation": 0.75, "min_sensitivity": 95.0, "max_mismatch": 2,
         "enable_blast": True,
         "auto_relax_constraints": True,
         "degenerate_primers": True,

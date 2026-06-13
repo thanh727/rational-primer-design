@@ -62,7 +62,7 @@ def run_validate_online(request: dict[str, Any]) -> None:
             "-o",
             str(output_dir / "designed_probes.csv"),
             "-e",
-            str(request.get("max_mismatch", 4)),
+            str(request.get("max_mismatch", 2)),
             "--max_len",
             str(request.get("max_len", 1500)),
         ]
@@ -76,7 +76,7 @@ def run_validate_online(request: dict[str, Any]) -> None:
             background_dir=background_dir,
             output_csv=output_dir / "PCR_Advanced_Report.csv",
             extract_sequence=bool(request.get("extract_sequence", False)),
-            max_mismatch=int(request.get("max_mismatch", 4)),
+            max_mismatch=int(request.get("max_mismatch", 2)),
             workers=int(request.get("workers", 0)),
             max_len=int(request.get("max_len", 1500)),
         )

@@ -35,7 +35,7 @@ def is_match(q, t):
     return t in IUPAC.get(q, {q})
 
 class IndustrialEngine:
-    def __init__(self, name, fwd, rev, template_path='', max_error=4, max_p=1500, extract_seq=False, probe='', probe_max_error=2):
+    def __init__(self, name, fwd, rev, template_path='', max_error=2, max_p=1500, extract_seq=False, probe='', probe_max_error=2):
         self.name = name
         self.fwd, self.rev = fwd.strip().upper(), rev.strip().upper()
         self.probe = probe.strip().upper() if probe else ''
@@ -159,7 +159,7 @@ def main():
     parser.add_argument("-b", "--background", help="Background Genomes directory")
     parser.add_argument("-o", "--output", default="PCR_Advanced_Report.csv")
     parser.add_argument("-s", "--seq", action="store_true", help="Extract Amplicon sequence")
-    parser.add_argument("-e", "--error", type=int, default=4, help="Total maximum mismatch")
+    parser.add_argument("-e", "--error", type=int, default=2, help="Total maximum mismatch")
     parser.add_argument("--probe_error", type=int, default=2, help="Maximum mismatches allowed for probe")
     parser.add_argument("-w", "--workers", type=int, default=8, help="Number of CPU cores")
     parser.add_argument("--max_len", type=int, default=1500, help="Maximum Amplicon size")
