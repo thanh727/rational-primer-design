@@ -116,7 +116,13 @@ type StatusPayload = {
   ai: OfflineModelsResponse;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+function getApiBase(): string {
+  if (typeof window !== "undefined" && (window as any).electronAPI) {
+    return "http://127.0.0.1:8000";
+  }
+  return process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+}
+const API_BASE = getApiBase();
 
 const I18N: Record<Lang, Record<string, string>> = {
   vi: {
@@ -551,6 +557,7 @@ const NAV: Array<{ view: WorkspaceView; href: string; icon: string }> = [
 ];
 
 export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
+  const isElectron = typeof window !== "undefined" && !!(window as any).electronAPI;
   const [lang, setLang] = useState<Lang>("en");
   const [parameters, setParameters] = useState<Parameters>({});
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -1269,8 +1276,7 @@ export function Dashboard({ view = "dashboard" }: { view?: WorkspaceView }) {
                 {view === "local" ? (
                   <LocalMode
                     tx={tx}
-                    mode={localMode}
-                    setMode={setLocalMode}
+                    isElectron={isElectron}
                     target={localTarget}
                     background={localBackground}
                     setTarget={setLocalTarget}
@@ -1686,8 +1692,7 @@ function AboutPage({ tx }: { tx: Record<string, string> }) {
 
 function LocalMode(props: {
   tx: Record<string, string>;
-  mode: "path" | "upload";
-  setMode: (mode: "path" | "upload") => void;
+  isElectron: boolean;
   target: string;
   background: string;
   setTarget: (value: string) => void;
@@ -1723,121 +1728,104 @@ function LocalMode(props: {
     props.setUploadBackgroundFiles(fastaFiles);
   }
 
-  return (
-    <>
-      <div className="segmented-control" role="tablist">
-        <button
-          type="button"
-          role="tab"
-          className={props.mode === "path" ? "active" : ""}
-          onClick={() => props.setMode("path")}
-        >
-          {props.tx.source_local}
+  if (props.isElectron) {
+    return (
+      <form className="panel" onSubmit={props.onSubmit}>
+        <PanelTitle title={props.tx.localTitle} />
+        <div className="field-grid">
+          <PathInput label={props.tx.targetPath} value={props.target} onChange={props.setTarget} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
+          <PathInput label={props.tx.backgroundPath} value={props.background} onChange={props.setBackground} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
+        </div>
+        <PreflightChecklist
+          tx={props.tx}
+          items={[
+            { label: props.tx.targetPath, ok: Boolean(props.target.trim()) },
+            { label: props.tx.backgroundPath, ok: Boolean(props.background.trim()) },
+            { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
+            { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
+          ]}
+        />
+        <button className="primary" disabled={props.isBusy} type="submit">
+          {props.tx.runLocal}
         </button>
-        <button
-          type="button"
-          role="tab"
-          className={props.mode === "upload" ? "active" : ""}
-          onClick={() => props.setMode("upload")}
-        >
-          {props.tx.source_upload}
-        </button>
-      </div>
+      </form>
+    );
+  }
 
-      {props.mode === "path" ? (
-        <form className="panel" onSubmit={props.onSubmit}>
-          <PanelTitle title={props.tx.localTitle} />
-          <div className="field-grid">
-            <PathInput label={props.tx.targetPath} value={props.target} onChange={props.setTarget} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
-            <PathInput label={props.tx.backgroundPath} value={props.background} onChange={props.setBackground} tx={props.tx} requestBrowse={props.requestBrowse} kind="directory" />
-          </div>
-          <PreflightChecklist
-            tx={props.tx}
-            items={[
-              { label: props.tx.targetPath, ok: Boolean(props.target.trim()) },
-              { label: props.tx.backgroundPath, ok: Boolean(props.background.trim()) },
-              { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
-              { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
-            ]}
+  return (
+    <form className="panel" onSubmit={props.onUploadSubmit}>
+      <PanelTitle title={props.tx.source_upload} />
+      <div className="field-grid">
+        <div
+          className={`drop-zone ${dragTarget ? "drag-over" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); setDragTarget(true); }}
+          onDragLeave={() => setDragTarget(false)}
+          onDrop={(e) => { e.preventDefault(); setDragTarget(false); handleTargetFiles(e.dataTransfer.files); }}
+          onClick={() => targetFileInput.current?.click()}
+        >
+          <input
+            ref={targetFileInput}
+            type="file"
+            multiple
+            accept=".fasta,.fa,.fna"
+            style={{ display: "none" }}
+            onChange={(e) => handleTargetFiles(e.target.files)}
           />
-          <button className="primary" disabled={props.isBusy} type="submit">
-            {props.tx.runLocal}
-          </button>
-        </form>
-      ) : (
-        <form className="panel" onSubmit={props.onUploadSubmit}>
-          <PanelTitle title={props.tx.source_upload} />
-          <div className="field-grid">
-            <div
-              className={`drop-zone ${dragTarget ? "drag-over" : ""}`}
-              onDragOver={(e) => { e.preventDefault(); setDragTarget(true); }}
-              onDragLeave={() => setDragTarget(false)}
-              onDrop={(e) => { e.preventDefault(); setDragTarget(false); handleTargetFiles(e.dataTransfer.files); }}
-              onClick={() => targetFileInput.current?.click()}
-            >
-              <input
-                ref={targetFileInput}
-                type="file"
-                multiple
-                accept=".fasta,.fa,.fna"
-                style={{ display: "none" }}
-                onChange={(e) => handleTargetFiles(e.target.files)}
-              />
-              {props.uploadTargetFiles.length > 0 ? (
-                <div>
-                  <strong>{props.tx.targetPath}:</strong>
-                  {props.uploadTargetFiles.map((f) => (
-                    <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
-                  ))}
-                </div>
-              ) : (
-                <span className="drop-zone-hint">{props.tx.targetPath} — {props.tx.browse}</span>
-              )}
+          {props.uploadTargetFiles.length > 0 ? (
+            <div>
+              <strong>{props.tx.targetPath}:</strong>
+              {props.uploadTargetFiles.map((f) => (
+                <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
+              ))}
             </div>
-            <div
-              className={`drop-zone ${dragBackground ? "drag-over" : ""}`}
-              onDragOver={(e) => { e.preventDefault(); setDragBackground(true); }}
-              onDragLeave={() => setDragBackground(false)}
-              onDrop={(e) => { e.preventDefault(); setDragBackground(false); handleBackgroundFiles(e.dataTransfer.files); }}
-              onClick={() => backgroundFileInput.current?.click()}
-            >
-              <input
-                ref={backgroundFileInput}
-                type="file"
-                multiple
-                accept=".fasta,.fa,.fna"
-                style={{ display: "none" }}
-                onChange={(e) => handleBackgroundFiles(e.target.files)}
-              />
-              {props.uploadBackgroundFiles.length > 0 ? (
-                <div>
-                  <strong>{props.tx.backgroundPath}:</strong>
-                  {props.uploadBackgroundFiles.map((f) => (
-                    <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
-                  ))}
-                </div>
-              ) : (
-                <span className="drop-zone-hint">{props.tx.backgroundPath} — {props.tx.browse}</span>
-              )}
-            </div>
-          </div>
-          <PreflightChecklist
-            tx={props.tx}
-            items={[
-              { label: props.tx.targetPath, ok: props.uploadTargetFiles.length > 0 },
-              { label: props.tx.backgroundPath, ok: props.uploadBackgroundFiles.length > 0 },
-              { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
-              { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
-            ]}
+          ) : (
+            <span className="drop-zone-hint">{props.tx.targetPath} — {props.tx.browse}</span>
+          )}
+        </div>
+        <div
+          className={`drop-zone ${dragBackground ? "drag-over" : ""}`}
+          onDragOver={(e) => { e.preventDefault(); setDragBackground(true); }}
+          onDragLeave={() => setDragBackground(false)}
+          onDrop={(e) => { e.preventDefault(); setDragBackground(false); handleBackgroundFiles(e.dataTransfer.files); }}
+          onClick={() => backgroundFileInput.current?.click()}
+        >
+          <input
+            ref={backgroundFileInput}
+            type="file"
+            multiple
+            accept=".fasta,.fa,.fna"
+            style={{ display: "none" }}
+            onChange={(e) => handleBackgroundFiles(e.target.files)}
           />
-          <button className="primary" disabled={props.isBusy} type="submit">
-            {props.tx.runLocal}
-          </button>
-        </form>
-      )}
-    </>
+          {props.uploadBackgroundFiles.length > 0 ? (
+            <div>
+              <strong>{props.tx.backgroundPath}:</strong>
+              {props.uploadBackgroundFiles.map((f) => (
+                <div key={f.name} className="file-chip">{f.name} ({(f.size / 1024).toFixed(1)} KB)</div>
+              ))}
+            </div>
+          ) : (
+            <span className="drop-zone-hint">{props.tx.backgroundPath} — {props.tx.browse}</span>
+          )}
+        </div>
+      </div>
+      <PreflightChecklist
+        tx={props.tx}
+        items={[
+          { label: props.tx.targetPath, ok: props.uploadTargetFiles.length > 0 },
+          { label: props.tx.backgroundPath, ok: props.uploadBackgroundFiles.length > 0 },
+          { label: props.tx.outputName, ok: Boolean(props.outputName.trim()) },
+          { label: props.tx.degenerate_primers, ok: true, note: parameterSwitchText(props.parameters.degenerate_primers, props.tx) },
+        ]}
+      />
+      <button className="primary" disabled={props.isBusy} type="submit">
+        {props.tx.runLocal}
+      </button>
+    </form>
   );
 }
+
+
 
 function AutoMode(props: {
   tx: Record<string, string>;
