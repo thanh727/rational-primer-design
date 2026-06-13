@@ -205,7 +205,13 @@ def create_app() -> FastAPI:
         time.sleep(40)
         while True:
             time.sleep(2)
-            if HAS_HEARTBEAT_STARTED and (time.time() - LAST_HEARTBEAT > 12):
+            # If there are active running subprocesses, reset heartbeat to avoid timeout
+            active_jobs = any(proc.poll() is None for proc in PROCESS_REGISTRY.values())
+            if active_jobs:
+                LAST_HEARTBEAT = time.time()
+                continue
+
+            if HAS_HEARTBEAT_STARTED and (time.time() - LAST_HEARTBEAT > 300):
                 print("⚠️ [SYSTEM] Heartbeat lost. Closing application and cleaning resources...")
                 # 1. Kill any running subprocesses in PROCESS_REGISTRY
                 for job_id, proc in list(PROCESS_REGISTRY.items()):
@@ -215,19 +221,7 @@ def create_app() -> FastAPI:
                         except Exception:
                             pass
                 
-                # 2. Terminate any running frontend processes in this repo
-                try:
-                    repo_str = str(REPO_ROOT).replace('\\', '/').lower()
-                    for p in psutil.process_iter(['pid', 'name', 'cwd', 'cmdline']):
-                        if p.info['name'] and 'node' in p.info['name'].lower():
-                            cmdline = [c.replace('\\', '/').lower() for c in (p.info['cmdline'] or [])]
-                            cwd = (p.info['cwd'] or '').replace('\\', '/').lower()
-                            if repo_str in cwd or any(repo_str in c for c in cmdline):
-                                p.kill()
-                except Exception:
-                    pass
-                
-                # 3. Terminate backend API server itself
+                # 2. Terminate backend API server itself
                 os.kill(os.getpid(), signal.SIGTERM)
                 break
 
@@ -1342,14 +1336,20 @@ def _read_csv_preview(path: Path, limit: int = 50) -> dict[str, Any]:
     if not path.exists():
         return {"exists": False, "columns": [], "rows": []}
     try:
-        df = pd.read_csv(path)
+        df = pd.read_csv(path, nrows=limit)
+        row_count = 0
+        with open(path, "r", encoding="utf-8", errors="ignore") as f:
+            for _ in f:
+                row_count += 1
+        if row_count > 0:
+            row_count -= 1  # subtract header row
     except Exception as exc:
         return {"exists": True, "columns": [], "rows": [], "error": str(exc)}
     return {
         "exists": True,
         "columns": list(df.columns),
-        "rows": df.head(limit).fillna("").to_dict(orient="records"),
-        "row_count": int(len(df)),
+        "rows": df.fillna("").to_dict(orient="records"),
+        "row_count": row_count,
     }
 
 

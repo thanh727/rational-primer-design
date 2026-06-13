@@ -79,7 +79,7 @@ def find_primer_hits(sequence_s, primer_s, max_mm):
     # Pigeonhole segments: at least one segment must match exactly (accounting for IUPAC)
     for offset, segment in _primer_segments(primer_s, max_mm):
         pattern = _iupac_to_regex(segment)
-        for match in re.finditer(pattern, sequence_s):
+        for match in re.finditer(f"(?=({pattern}))", sequence_s):
             start_pos = match.start() - offset
             if 0 <= start_pos <= len(sequence_s) - n:
                 candidate_starts.add(start_pos)

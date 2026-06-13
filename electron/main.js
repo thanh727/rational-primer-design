@@ -24,10 +24,21 @@ const gotTheLock = app.requestSingleInstanceLock();
 if (!gotTheLock) {
   app.quit();
 } else {
-  app.on("second-instance", () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+  app.on("second-instance", async () => {
+    try {
+      console.log("[electron] Second instance detected. Ensuring backend is running...");
+      await startBackend();
+      
+      if (!mainWindow) {
+        createMainWindow();
+      } else {
+        if (mainWindow.isMinimized()) mainWindow.restore();
+        mainWindow.focus();
+        mainWindow.webContents.send("backend-ready", BACKEND_URL);
+        mainWindow.reload();
+      }
+    } catch (err) {
+      console.error("[electron] Failed to restart backend on second instance:", err.message);
     }
   });
 }

@@ -13,17 +13,24 @@ let backendProcess = null;
 let retryCount = 0;
 
 function resolveBinary() {
-  if (process.env.NODE_ENV === "development") {
+  const resources = process.resourcesPath || path.join(__dirname, "..");
+  const ext = process.platform === "win32" ? ".exe" : "";
+  const prodBinary = path.join(resources, "backend", `api_server${ext}`);
+
+  if (process.env.NODE_ENV === "development" || !fs.existsSync(prodBinary)) {
     const venvPython = path.join(__dirname, "..", "venv", "bin", "python");
     if (fs.existsSync(venvPython)) {
       return { command: venvPython, args: ["-m", "rational_design.api_server"] };
     }
+    const venvPythonWin = path.join(__dirname, "..", "venv", "Scripts", "python.exe");
+    if (fs.existsSync(venvPythonWin)) {
+      return { command: venvPythonWin, args: ["-m", "rational_design.api_server"] };
+    }
     return { command: "python3", args: ["-m", "rational_design.api_server"] };
   }
-  const resources = process.resourcesPath || path.join(__dirname, "..");
-  const ext = process.platform === "win32" ? ".exe" : "";
-  return { command: path.join(resources, "backend", `api_server${ext}`), args: [] };
+  return { command: prodBinary, args: [] };
 }
+
 
 function probe(url) {
   return new Promise((resolve) => {

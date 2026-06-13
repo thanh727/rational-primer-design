@@ -767,6 +767,8 @@ input[type="file"] {
 .query-editor {
   display: grid;
   gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 
 .subheading {
@@ -781,14 +783,14 @@ input[type="file"] {
   display: grid;
   grid-template-columns: minmax(140px, 1fr) minmax(70px, 100px) minmax(60px, 80px) minmax(70px, 90px) auto;
   gap: 6px;
-  overflow: auto;
+  min-width: 500px;
 }
 
 .primer-row {
   display: grid;
   grid-template-columns: minmax(100px, 140px) minmax(100px, 1fr) minmax(100px, 1fr) minmax(100px, 1fr) auto;
   gap: 6px;
-  overflow: auto;
+  min-width: 600px;
 }
 
 .path-row {
@@ -1471,16 +1473,6 @@ th {
   .recent {
     display: none;
   }
-  .query-row {
-    grid-template-columns: 1fr minmax(70px, 90px) minmax(60px, 80px);
-  }
-  .query-row select,
-  .query-row .ghost {
-    min-width: 0;
-  }
-  .primer-row {
-    grid-template-columns: minmax(90px, 1fr) minmax(0, 1fr);
-  }
   .history-row {
     grid-template-columns: auto 1fr;
     gap: 6px;
@@ -1522,8 +1514,6 @@ th {
   .field-grid.compact,
   .param-grid,
   .config-param-grid,
-  .query-row,
-  .primer-row,
   .path-row,
   .browse-row,
   .browse-location,
