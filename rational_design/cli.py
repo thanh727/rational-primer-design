@@ -8,7 +8,24 @@ import time
 import random
 import gc
 import ctypes
+import os
+import atexit
+import psutil
 from pathlib import Path
+
+def cleanup_child_processes():
+    try:
+        parent = psutil.Process(os.getpid())
+        for child in parent.children(recursive=True):
+            try:
+                child.kill()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+atexit.register(cleanup_child_processes)
+
 
 from .fetcher import SequenceFetcher
 from .constructor import LibraryConstructor
@@ -185,7 +202,8 @@ def run_full_pipeline(args: argparse.Namespace) -> None:
     }
 
     user_params = {}
-    config_file = Path(args.params) if args.params else Path("config/parameters.json")
+    repo_root = Path(__file__).resolve().parents[1]
+    config_file = Path(args.params) if args.params else repo_root / "config" / "parameters.json"
     if config_file.exists():
         print(f"\n[CONFIG] Attempting to load: {config_file}")
         try:
@@ -1200,6 +1218,90 @@ def run_multiplex_analysis(args: argparse.Namespace) -> None:
         except Exception as e:
             print(f"❌ AI Expert Multiplex Error: {e}")
 
+def run_ai_setup():
+    """Detect available local AI servers/models and let user select one."""
+    import urllib.request
+    import urllib.error
+
+    CONFIG_DIR = Path("config")
+    known_endpoints = [
+        ("http://localhost:11434/v1", "Ollama"),
+        ("http://localhost:1234/v1",  "LM Studio"),
+        ("http://localhost:8000/v1",  "LocalAI"),
+        ("http://localhost:8080/v1",  "GPT4All"),
+    ]
+
+    print("[AI Setup] Scanning for local AI servers...")
+    servers = []
+    for base_url, provider in known_endpoints:
+        try:
+            from openai import OpenAI
+            client = OpenAI(api_key="sk-local", base_url=base_url, timeout=3.0)
+            models = sorted({m.id for m in client.models.list().data})
+            if models:
+                servers.append((base_url, provider, models))
+                print(f"   [OK] {provider} detected at {base_url} ({len(models)} models)")
+            else:
+                print(f"   [..] {provider} at {base_url} responded but no models found")
+        except Exception:
+            try:
+                root = base_url[:-3] if base_url.endswith("/v1") else base_url
+                req = urllib.request.Request(f"{root}/api/tags", headers={"Accept": "application/json"})
+                with urllib.request.urlopen(req, timeout=3.0) as resp:
+                    payload = json.loads(resp.read().decode("utf-8"))
+                models = sorted({str(item.get("name") or item.get("model")) for item in payload.get("models", []) if item.get("name") or item.get("model")})
+                if models:
+                    servers.append((base_url, "Ollama (raw API)", models))
+                    print(f"   [OK] {provider} (raw API) detected at {base_url} ({len(models)} models)")
+            except Exception:
+                print(f"   [..] {provider} at {base_url} — no response")
+                continue
+
+    if not servers:
+        print("\n[FAIL] No local AI servers detected.")
+        print("   Please start Ollama (https://ollama.com) or LM Studio first.")
+        print("   Run again after starting your preferred AI server.")
+        return
+
+    if len(servers) == 1:
+        base_url, provider, models = servers[0]
+        print(f"\n[OK] Found 1 server: {provider} ({base_url})")
+    else:
+        print(f"\n[OK] Found {len(servers)} servers:")
+        for i, (url, prov, mods) in enumerate(servers, 1):
+            print(f"   [{i}] {prov} — {url} ({len(mods)} models available)")
+        while True:
+            try:
+                sel = int(input("\nSelect server number: ").strip())
+                if 1 <= sel <= len(servers):
+                    base_url, provider, models = servers[sel - 1]
+                    break
+                print(f"Please enter a number between 1 and {len(servers)}.")
+            except ValueError:
+                print("Invalid input. Enter a number.")
+
+    print(f"\nModels available on {provider}:")
+    for i, model in enumerate(models, 1):
+        print(f"   [{i}] {model}")
+    while True:
+        try:
+            sel = int(input("\nSelect model number: ").strip())
+            if 1 <= sel <= len(models):
+                selected_model = models[sel - 1]
+                break
+            print(f"Please enter a number between 1 and {len(models)}.")
+        except ValueError:
+            print("Invalid input. Enter a number.")
+
+    CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+    settings_path = CONFIG_DIR / "ai_settings.json"
+    with open(settings_path, "w", encoding="utf-8") as f:
+        json.dump({"base_url": base_url, "model": selected_model}, f, indent=2)
+    print(f"\n[OK] AI settings saved to {settings_path}")
+    print(f"   Base URL: {base_url}")
+    print(f"   Model:    {selected_model}")
+
+
 def main():
     parser = argparse.ArgumentParser()
     subparsers = parser.add_subparsers(dest="command")
@@ -1251,6 +1353,9 @@ def main():
     # Register terminal interactive mode
     subparsers.add_parser("term", help="Interactive terminal wizard")
 
+    # Register ai-setup command
+    subparsers.add_parser("ai-setup", help="Detect & configure local AI models")
+
     args = parser.parse_args()
     if args.command == "pipeline":
         run_full_pipeline(args)
@@ -1276,6 +1381,8 @@ def main():
     elif args.command == "term":
         from .term import main as run_terminal
         run_terminal()
+    elif args.command == "ai-setup":
+        run_ai_setup()
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()

@@ -85,58 +85,53 @@ chmod +x INSTALL_UX.sh RUN_APP_UX.sh
 
 The modern web interface runs the Python pipeline through a FastAPI backend and a Next.js frontend.
 
-```bash
-./scripts/RUN_WEB_APP.sh
+#### 🪟 Windows
+Double-click:
+```text
+run_local.bat
 ```
 
-Open:
+#### 🍎 macOS / 🐧 Linux
+```bash
+chmod +x run_local.sh
+./run_local.sh
+```
+
+Once started, open:
 ```text
 http://127.0.0.1:3000
 ```
 
-To run the two services separately:
-```bash
-./scripts/RUN_API.sh
-./scripts/RUN_WEB_FRONTEND.sh
-```
-
-Default endpoints:
-- FastAPI: `http://127.0.0.1:8000`
-- Next.js: `http://127.0.0.1:3000`
-
-The web app keeps the original workflow architecture:
-- `/dashboard`: recent web jobs, legacy Streamlit history, live logs, and result files.
-- `/design/local`: local design from existing FASTA files or folders.
-- `/design/auto`: automatic NCBI design from target/background keywords.
-- `/ai`: AI Expert chat mode with runnable `propose_design`, `propose_local_design`, `propose_validation`, and `propose_multiplex` proposals.
-- `/validate`: known-primer in-silico PCR validation from local folders or NCBI keywords.
-- `/multiplex`: local multiplex, automatic NCBI multiplex, and analysis of existing completed target folders.
-- Vietnamese and English UI labels.
-
-The website layout uses a traditional top navigation bar for primary functions and a left shared-configuration sidebar for language, run name, NCBI email, AI backend, assay type, and core design parameters. The AI Expert chat keeps the legacy PCR/qPCR expert prompt: it can design assays, validate known primers, configure multiplex runs, interpret results, and provide wet-lab optimization or troubleshooting advice without forcing a runnable JSON proposal unless the user asks to run a pipeline.
+*Note: The web server automatically monitors active browser tabs. When you close all browser tabs, the server and all associated background processes will automatically shut down to save system resources.*
 
 ---
 
-### 🖥️ Desktop (GUI Mode)
+### 🖥️ Desktop (Interactive Terminal Wizard)
+
+The interactive terminal wizard guides you step-by-step through configuring and running pipeline tasks.
 
 #### 🪟 Windows
 Double‑click:
 ```text
 RUN_APP.bat
 ```
-Then follow the on‑screen instructions.
 
 #### 🍎 macOS / 🐧 Linux
 ```bash
+chmod +x RUN_APP_UX.sh
 ./RUN_APP_UX.sh
 ```
-Follow the interactive prompts displayed in the terminal.
+
+Alternatively, if installed as a package, run:
+```bash
+rational-design term
+```
 
 ---
 
 ### ⌨️ Command‑Line Interface (CLI Mode)
 
-The CLI mode is recommended for advanced users, automation, and high‑performance computing environments.
+If you installed the package, you can run the pipeline directly from your terminal using the globally registered `rational-design` command.
 
 #### 1. Auto‑Download Mode (NCBI Fetch)
 
@@ -160,7 +155,7 @@ Prepare two configuration files:
 
 **Run the pipeline:**
 ```bash
-./scripts/RUN_CLI.sh pipeline   --out "results_auto_test"   --email "your_email@example.com"   --target_config "targets.json"   --bg_config "background.json"
+rational-design pipeline --out "results_auto_test" --email "your_email@example.com" --target_config "targets.json" --bg_config "background.json"
 ```
 
 > An email address is required by NCBI for genome downloads.
@@ -172,7 +167,7 @@ Prepare two configuration files:
 **Recommended for:** Running on existing genome collections (e.g. servers or HPC clusters).
 
 ```bash
-./scripts/RUN_CLI.sh pipeline   --out "results_local_test"   --local_target "path/to/target_genomes_folder"   --local_bg "path/to/background_genomes_folder"
+rational-design pipeline --out "results_local_test" --local_target "path/to/target_genomes_folder" --local_bg "path/to/background_genomes_folder"
 ```
 
 **Optional:**

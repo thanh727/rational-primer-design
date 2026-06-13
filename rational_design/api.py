@@ -30,6 +30,9 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_PARAMS_PATH = REPO_ROOT / "config" / "parameters.json"
 RUN_ROOT = Path(os.environ.get("RPD_RUN_ROOT", REPO_ROOT / "runs" / "web_jobs"))
 PROCESS_REGISTRY: dict[str, subprocess.Popen] = {}
+LAST_HEARTBEAT = time.time()
+HAS_HEARTBEAT_STARTED = False
+
 
 
 class LocalPipelineRequest(BaseModel):
@@ -187,6 +190,50 @@ def create_app() -> FastAPI:
     @app.get("/")
     def root() -> dict[str, str]:
         return {"service": "Rational Primer Design API", "health": "/api/health"}
+
+    @app.post("/api/heartbeat")
+    def post_heartbeat() -> dict[str, str]:
+        global LAST_HEARTBEAT, HAS_HEARTBEAT_STARTED
+        LAST_HEARTBEAT = time.time()
+        HAS_HEARTBEAT_STARTED = True
+        return {"status": "alive"}
+
+    def monitor_heartbeat():
+        global LAST_HEARTBEAT, HAS_HEARTBEAT_STARTED
+        import threading
+        # Initial startup grace period
+        time.sleep(40)
+        while True:
+            time.sleep(2)
+            if HAS_HEARTBEAT_STARTED and (time.time() - LAST_HEARTBEAT > 12):
+                print("⚠️ [SYSTEM] Heartbeat lost. Closing application and cleaning resources...")
+                # 1. Kill any running subprocesses in PROCESS_REGISTRY
+                for job_id, proc in list(PROCESS_REGISTRY.items()):
+                    if proc.poll() is None:
+                        try:
+                            _terminate_process(proc)
+                        except Exception:
+                            pass
+                
+                # 2. Terminate any running frontend processes in this repo
+                try:
+                    repo_str = str(REPO_ROOT).replace('\\', '/').lower()
+                    for p in psutil.process_iter(['pid', 'name', 'cwd', 'cmdline']):
+                        if p.info['name'] and 'node' in p.info['name'].lower():
+                            cmdline = [c.replace('\\', '/').lower() for c in (p.info['cmdline'] or [])]
+                            cwd = (p.info['cwd'] or '').replace('\\', '/').lower()
+                            if repo_str in cwd or any(repo_str in c for c in cmdline):
+                                p.kill()
+                except Exception:
+                    pass
+                
+                # 3. Terminate backend API server itself
+                os.kill(os.getpid(), signal.SIGTERM)
+                break
+
+    if "pytest" not in sys.modules:
+        import threading
+        threading.Thread(target=monitor_heartbeat, daemon=True).start()
 
     @app.get("/api/health")
     def health() -> dict[str, Any]:

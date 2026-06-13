@@ -10,6 +10,9 @@ import time
 from datetime import datetime
 from pathlib import Path
 from typing import Any
+import atexit
+import psutil
+
 
 from rational_design.utils import generate_batch_analytical_summary
 
@@ -25,7 +28,23 @@ console = Console()
 
 FASTA_EXTS = {".fasta", ".fa", ".fna", ".fas"}
 RUNS_DIR = Path(os.getcwd()) / "runs"
-CONFIG_DIR = Path(os.getcwd()) / "config"
+CONFIG_DIR = Path(__file__).resolve().parents[1] / "config"
+
+ACTIVE_PROCESSES: list[subprocess.Popen] = []
+
+def cleanup_active_processes():
+    for p in ACTIVE_PROCESSES:
+        if p.poll() is None:
+            try:
+                parent = psutil.Process(p.pid)
+                for child in parent.children(recursive=True):
+                    child.kill()
+                p.kill()
+            except Exception:
+                pass
+
+atexit.register(cleanup_active_processes)
+
 
 
 def main() -> None:
@@ -104,13 +123,15 @@ def _main_menu() -> str:
     console.print("  [8]  \U0001F4AC  [bold]AI Chat[/]                   \u2014 Interactive AI Expert with auto-run")
     console.print("  [9]  \U0001F4CA  [bold]Run History[/]               \u2014 View past runs & results")
     console.print("  [10] \u2753  [bold]Language[/]                   \u2014 Switch language (vi/en)")
-    console.print("  [11] \u274C  [bold]Exit[/]\n")
+    console.print("  [11] \u2699\uFE0F  [bold]AI Setup[/]                 \u2014 Detect & configure local AI models")
+    console.print("  [12] \u274C  [bold]Exit[/]\n")
 
-    choice = Prompt.ask("Enter your choice", choices=[str(i) for i in range(1, 12)], default="1")
+    choice = Prompt.ask("Enter your choice", choices=[str(i) for i in range(1, 13)], default="1")
     mapping = {
         "1": "ncbi", "2": "local", "3": "validate", "4": "multiplex",
         "5": "multiplex_local", "6": "multiplex_ncbi",
-        "7": "ai_expert", "8": "ai_chat", "9": "history", "10": "language", "11": "exit",
+        "7": "ai_expert", "8": "ai_chat", "9": "history", "10": "language",
+        "11": "ai_setup", "12": "exit",
     }
     return mapping[choice]
 
@@ -137,6 +158,8 @@ def _route(choice: str) -> None:
     elif choice == "language":
         _configure_language()
         console.print(f"[green]\u2705 Language set to {_get_language().upper()}[/]")
+    elif choice == "ai_setup":
+        _wizard_ai_setup()
 
 
 # ─────────────────────────────────────────────
@@ -803,10 +826,11 @@ def _load_saved_email() -> str:
         return ""
 
 
-def _save_fetcher_config(path: Path, data: dict[str, list]) -> None:
+def _save_fetcher_config(path: Path, data: dict[str, list]) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", encoding="utf-8") as f:
         json.dump(data, f, ensure_ascii=False, indent=2)
+    return path
 
 
 def _configure_params() -> Path:
@@ -879,6 +903,81 @@ def _configure_ai() -> tuple[str | None, str | None]:
     model = Prompt.ask("  AI model name", default=saved_model)
     _save_ai_config(base_url, model)
     return base_url, model
+
+
+# ─────────────────────────────────────────────
+#  AI SETUP WIZARD
+# ─────────────────────────────────────────────
+def _wizard_ai_setup() -> None:
+    """Detect available local AI servers and let user select one."""
+    import urllib.request
+    import urllib.error
+
+    _print_header()
+    console.print(Panel("[bold]\u2699\uFE0F  AI Setup[/]\nDetect local AI servers and configure model.", border_style="cyan"))
+
+    known_endpoints = [
+        ("http://localhost:11434/v1", "Ollama"),
+        ("http://localhost:1234/v1",  "LM Studio"),
+        ("http://localhost:8000/v1",  "LocalAI"),
+        ("http://localhost:8080/v1",  "GPT4All"),
+    ]
+
+    with Progress(
+        SpinnerColumn(), TextColumn("[progress.description]{task.description}"), transient=True,
+    ) as progress:
+        progress.add_task("[cyan]Scanning for local AI servers...", total=None)
+        servers = []
+        for base_url, provider in known_endpoints:
+            try:
+                from openai import OpenAI
+                client = OpenAI(api_key="sk-local", base_url=base_url, timeout=3.0)
+                models = sorted({m.id for m in client.models.list().data})
+                if models:
+                    servers.append((base_url, provider, models))
+                    console.print(f"   [green]\u2713[/] {provider} at {base_url} [dim]({len(models)} models)[/]")
+            except Exception:
+                try:
+                    root = base_url[:-3] if base_url.endswith("/v1") else base_url
+                    req = urllib.request.Request(f"{root}/api/tags", headers={"Accept": "application/json"})
+                    with urllib.request.urlopen(req, timeout=3.0) as resp:
+                        payload = json.loads(resp.read().decode("utf-8"))
+                    models = sorted({str(item.get("name") or item.get("model")) for item in payload.get("models", []) if item.get("name") or item.get("model")})
+                    if models:
+                        servers.append((base_url, f"{provider} (raw API)", models))
+                        console.print(f"   [green]\u2713[/] {provider} (raw) at {base_url} [dim]({len(models)} models)[/]")
+                except Exception:
+                    console.print(f"   [dim]\u2014[/] {provider} at {base_url} [dim]no response[/]")
+                    continue
+
+    if not servers:
+        console.print("\n[red]\u2717 No local AI servers detected.[/]")
+        console.print("   [yellow]Start Ollama (https://ollama.com) or LM Studio first.[/]")
+        console.print("   [yellow]Run this setup again after starting your AI server.[/]")
+        return
+
+    if len(servers) == 1:
+        base_url, provider, models = servers[0]
+        console.print(f"\n[green]\u2713 Found 1 server:[/] {provider} [dim]({base_url})[/]")
+    else:
+        console.print(f"\n[green]\u2713 Found {len(servers)} servers:[/]")
+        choices = [f"{prov} \u2014 {url}" for url, prov, _ in servers]
+        sel = Prompt.ask("Select server", choices=[str(i + 1) for i in range(len(servers))], default="1")
+        base_url, provider, models = servers[int(sel) - 1]
+
+    console.print(f"\nModels available on [bold]{provider}[/]:")
+    for i, m in enumerate(models, 1):
+        console.print(f"   [{i}] {m}")
+
+    model_choices = [str(i + 1) for i in range(len(models))]
+    sel = Prompt.ask("Select model number", choices=model_choices, default="1")
+    selected_model = models[int(sel) - 1]
+
+    _save_ai_config(base_url, selected_model)
+    console.print(f"\n[green]\u2705 AI settings saved![/]")
+    console.print(f"   Base URL: [cyan]{base_url}[/]")
+    console.print(f"   Model:    [cyan]{selected_model}[/]")
+    console.print(f"\n[dim]   File: {CONFIG_DIR / 'ai_settings.json'}[/]")
 
 
 # ─────────────────────────────────────────────
@@ -978,8 +1077,28 @@ def _wizard_ai_chat() -> None:
 
         if proposal and auto_run and proposal.get("run_immediately", False):
             console.print(f"\n[bold]\U0001F916 AI proposed an action: [cyan]{proposal.get('action')}[/][/]")
-            if Confirm.ask("  Run this proposal?", default=True):
+            
+            if proposal.get("action") in {"propose_design", "propose_multiplex"}:
+                t_list = _items_from_proposal(proposal.get("targets") or proposal.get("target") or [], default_count=500)
+                b_list = _items_from_proposal(proposal.get("backgrounds") or proposal.get("background") or [], default_count=50)
+                console.print("\n[bold cyan]📋 Proposed Targets:[/]")
+                for idx, t in enumerate(t_list, 1):
+                    console.print(f"  [{idx}] {t['query']} (Max download: {t['count']}, Min size: {t['size']} Mb)")
+                if b_list:
+                    console.print("[bold yellow]📋 Proposed Backgrounds (Exclusion):[/]")
+                    for idx, b in enumerate(b_list, 1):
+                        console.print(f"  [{idx}] {b['query']} (Max download: {b['count']}, Min size: {b['size']} Mb)")
+                else:
+                    console.print("[yellow]📋 No background exclusion species proposed.[/]")
+            
+            choice = Prompt.ask("\n  Choose action: [r]un proposal, [e]dit configuration, [c]ancel", choices=["r", "e", "c"], default="r")
+            if choice == "r":
                 _execute_ai_proposal(proposal, email, lang, ai_base_url, ai_model)
+            elif choice == "e":
+                proposal = _edit_ai_proposal(proposal)
+                _execute_ai_proposal(proposal, email, lang, ai_base_url, ai_model)
+            else:
+                console.print("[yellow]⚠️ AI proposal cancelled.[/]")
 
 
 def _extract_proposal_from_reply(text: str) -> dict[str, Any] | None:
@@ -1010,6 +1129,61 @@ def _strip_proposal_from_reply(text: str) -> str:
     def replace_block(match: re.Match) -> str:
         return "" if '"action"' in match.group(1) else match.group(0)
     return re.sub(r"```json\s*([\s\S]*?)\s*```", replace_block, text).strip()
+
+
+def _edit_ai_proposal(proposal: dict[str, Any]) -> dict[str, Any]:
+    targets = _items_from_proposal(proposal.get("targets") or proposal.get("target") or [], default_count=500)
+    backgrounds = _items_from_proposal(proposal.get("backgrounds") or proposal.get("background") or [], default_count=50)
+
+    # Edit targets
+    if Confirm.ask("\nModify proposed Targets?", default=False):
+        new_targets = []
+        for idx, t in enumerate(targets, 1):
+            console.print(f"\nTarget #{idx}: [bold]{t['query']}[/]")
+            action = Prompt.ask("Action: [k]eep, [m]odify, [d]elete", choices=["k", "m", "d"], default="k")
+            if action == "k":
+                new_targets.append(t)
+            elif action == "m":
+                query = Prompt.ask("  Query", default=t["query"])
+                count = IntPrompt.ask("  Max genomes to download", default=t["count"])
+                new_targets.append({"query": query, "size": t["size"], "count": count, "type": t["type"]})
+        
+        while True:
+            add_more = Confirm.ask("Add another Target species?", default=False)
+            if not add_more:
+                break
+            query = Prompt.ask("  Query", default="")
+            if query:
+                count = IntPrompt.ask("  Max genomes to download", default=500)
+                new_targets.append({"query": query, "size": 0.0, "count": count, "type": "genome"})
+        targets = new_targets
+
+    # Edit backgrounds
+    if Confirm.ask("\nModify proposed Backgrounds (Exclusion)?", default=False):
+        new_backgrounds = []
+        for idx, b in enumerate(backgrounds, 1):
+            console.print(f"\nBackground #{idx}: [bold]{b['query']}[/]")
+            action = Prompt.ask("Action: [k]eep, [m]odify, [d]elete", choices=["k", "m", "d"], default="k")
+            if action == "k":
+                new_backgrounds.append(b)
+            elif action == "m":
+                query = Prompt.ask("  Query", default=b["query"])
+                count = IntPrompt.ask("  Max genomes to download", default=b["count"])
+                new_backgrounds.append({"query": query, "size": b["size"], "count": count, "type": b["type"]})
+        
+        while True:
+            add_more = Confirm.ask("Add another Background species?", default=False)
+            if not add_more:
+                break
+            query = Prompt.ask("  Query", default="")
+            if query:
+                count = IntPrompt.ask("  Max genomes to download", default=50)
+                new_backgrounds.append({"query": query, "size": 0.0, "count": count, "type": "genome"})
+        backgrounds = new_backgrounds
+
+    proposal["targets"] = targets
+    proposal["backgrounds"] = backgrounds
+    return proposal
 
 
 def _execute_ai_proposal(proposal: dict[str, Any], email: str, lang: str, ai_base_url: str | None, ai_model: str | None) -> None:
@@ -1370,6 +1544,7 @@ def _run_subprocess(cmd: list[str], title: str) -> None:
             encoding="utf-8",
             env=my_env,
         )
+        ACTIVE_PROCESSES.append(process)
 
         lines: list[str] = []
         stages = {
@@ -1393,6 +1568,9 @@ def _run_subprocess(cmd: list[str], title: str) -> None:
                     if keyword in clean:
                         progress.update(task, description=f"[cyan]{desc}")
                         break
+
+        if process in ACTIVE_PROCESSES:
+            ACTIVE_PROCESSES.remove(process)
 
         return_code = process.poll() or 0
 
